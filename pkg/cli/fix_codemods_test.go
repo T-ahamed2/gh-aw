@@ -88,6 +88,7 @@ func TestGetAllCodemods_ContainsExpectedCodemods(t *testing.T) {
 		"pull-request-target-checkout-false",
 		"dependabot-toolset-permissions",
 		"features-byok-copilot-removal",
+		"features-inline-agents-removal",
 		"mount-as-clis-to-cli-proxy",
 	}
 
@@ -149,6 +150,7 @@ func TestGetAllCodemods_InExpectedOrder(t *testing.T) {
 		"dependabot-toolset-permissions",
 		"github-repos-to-allowed-repos",
 		"features-byok-copilot-removal",
+		"features-inline-agents-removal",
 		"features-cli-proxy-to-tools-github-mode",
 		"features-difc-proxy-to-tools-github",
 		"mount-as-clis-to-cli-proxy",
