@@ -334,3 +334,87 @@ Future versions may:
 - Use different hash algorithms
 
 Version changes will be documented and backward compatibility maintained where possible.
+
+### Future Versions (v2.0.0 Planning)
+
+Per the **Resolution (2026-05-08)** in Implementation Notes, the text-based algorithm remains
+authoritative until a dedicated migration milestone is approved.
+
+The project **MUST NOT** schedule a v2.0.0 migration to the field-selection model until all of
+the following prerequisites are complete:
+
+1. A selective field-exclusion use case is confirmed and documented.
+2. A migration guide is drafted, including lock-file invalidation and recompilation steps.
+3. Cross-language (Go + JavaScript) test vectors for the candidate v2.0.0 behavior are written
+   and pass in CI.
+4. A rollout plan is approved by maintainers, including backward-compatibility impact analysis.
+
+Until these prerequisites are met, implementations **MUST** continue using the text-based
+algorithm and **MUST NOT** selectively exclude frontmatter fields from hash input.
+
+## Appendix A: Cross-Language Test Vectors (Text-Based Algorithm)
+
+The following vectors are normative for the current authoritative text-based algorithm.
+
+Validation status: Each vector hash is verified to match in both implementations via automated
+cross-language tests in CI.
+
+### FH-TV-001
+
+Expected hash: `4c8309afbcf816cd80c0824dce2b50047834b29e14b34b96953e88ae81048c46`
+
+This vector represents an intentionally empty frontmatter block (`---` followed immediately by
+`---`) rather than a file with no frontmatter delimiter. These are treated as different input
+forms for conformance testing and MUST be validated independently; this vector defines only the
+explicit-empty-block form.
+
+```yaml
+---
+---
+
+# Empty Workflow
+```
+
+### FH-TV-002
+
+Expected hash: `b9def9907e3328e2e03e8c47c315723df39788f251627313b1a984bb61b9cbce`
+
+```yaml
+---
+engine: copilot
+description: Test workflow
+on:
+  schedule: daily
+---
+
+# Test Workflow
+```
+
+### FH-TV-003
+
+Expected hash: `8c63a05ef42cbfaff9be87a06257282cb4dcb952f71481d9d65ec3037003dbe8`
+
+```yaml
+---
+engine: claude
+description: Complex workflow
+tracker-id: complex-test
+timeout-minutes: 30
+on:
+  schedule: daily
+  workflow_dispatch: true
+permissions:
+  contents: read
+  actions: read
+tools:
+  playwright:
+    version: v1.41.0
+labels:
+  - test
+  - complex
+bots:
+  - copilot
+---
+
+# Complex Workflow
+```
