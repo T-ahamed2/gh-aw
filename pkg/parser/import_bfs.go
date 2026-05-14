@@ -13,8 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/goccy/go-yaml"
 	"github.com/github/gh-aw/pkg/constants"
+	"github.com/goccy/go-yaml"
 )
 
 // processImportsFromFrontmatterWithManifestAndSource is the internal implementation that includes source tracking.

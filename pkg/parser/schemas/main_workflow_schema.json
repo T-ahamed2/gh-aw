@@ -3721,7 +3721,7 @@
       "oneOf": [
         {
           "type": "integer",
-          "not": {"enum": [0]},
+          "not": { "enum": [0] },
           "description": "Maximum effective-token (ET) budget for AWF API proxy enforcement. Use a negative value to disable budget enforcement and token steering."
         },
         {

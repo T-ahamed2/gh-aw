@@ -106,10 +106,7 @@ describe("claude_harness.cjs", () => {
       const longPrompt = "<system>".padEnd(5000, "x");
       fs.writeFileSync(promptFile, longPrompt, "utf8");
       try {
-        const result = resolveClaudePromptFileArgs([
-          "--mcp-config", "/tmp/mcp-servers.json",
-          "--prompt-file", promptFile,
-        ]);
+        const result = resolveClaudePromptFileArgs(["--mcp-config", "/tmp/mcp-servers.json", "--prompt-file", promptFile]);
         // The -- must immediately precede the prompt content, not adjacent to --mcp-config.
         expect(result).toEqual(["--mcp-config", "/tmp/mcp-servers.json", "--", longPrompt]);
       } finally {
