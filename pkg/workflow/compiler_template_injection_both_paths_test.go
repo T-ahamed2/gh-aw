@@ -46,6 +46,44 @@ jobs:
         run: echo "$TITLE"
 `
 
+	// YAML with a GitHub Actions expression in run: that should have been
+	// rewritten into env: by the compiler.
+	regressionYAML := `
+name: regression
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Regression step
+        run: echo "${{ github.token }}"
+`
+
+	allowedGeneratedExpressionYAML := `
+name: generated-safe-expression
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Allowed generated expression
+        run: echo "${{ job.services['redis'].ports['6379'] }}"
+`
+
+	heredocExpressionYAML := `
+name: heredoc-expression
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Heredoc expression is file content
+        run: |
+          cat > config.txt << 'EOF'
+          token=${{ github.token }}
+          EOF
+`
+
 	tmpDir := testutil.TempDir(t, "template-injection-test")
 	markdownPath := filepath.Join(tmpDir, "test.md")
 	lockFile := stringutil.MarkdownToLockFile(markdownPath)
@@ -81,6 +119,40 @@ jobs:
 	t.Run("Path B - schema disabled - safe expression passes", func(t *testing.T) {
 		err := compiler.validateTemplateInjection(safeYAML, lockFile, markdownPath, nil)
 		assert.NoError(t, err, "safe expression in env: block should not be flagged")
+	})
+
+	t.Run("Path A - schema enabled - run expression regression detected", func(t *testing.T) {
+		err := compiler.validateTemplateInjection(regressionYAML, lockFile, markdownPath, parseYAML(t, regressionYAML))
+		require.Error(t, err, "should detect raw GitHub Actions expression in run script")
+		assert.Contains(t, err.Error(), "compiler regression detected")
+		assert.Contains(t, err.Error(), "github.token")
+	})
+
+	t.Run("Path B - schema disabled - run expression regression detected", func(t *testing.T) {
+		err := compiler.validateTemplateInjection(regressionYAML, lockFile, markdownPath, nil)
+		require.Error(t, err, "should detect raw GitHub Actions expression in run script")
+		assert.Contains(t, err.Error(), "compiler regression detected")
+		assert.Contains(t, err.Error(), "github.token")
+	})
+
+	t.Run("Path A - schema enabled - allowed generated run expression passes", func(t *testing.T) {
+		err := compiler.validateTemplateInjection(allowedGeneratedExpressionYAML, lockFile, markdownPath, parseYAML(t, allowedGeneratedExpressionYAML))
+		assert.NoError(t, err, "compiler-owned job.services expression should be allowed")
+	})
+
+	t.Run("Path B - schema disabled - allowed generated run expression passes", func(t *testing.T) {
+		err := compiler.validateTemplateInjection(allowedGeneratedExpressionYAML, lockFile, markdownPath, nil)
+		assert.NoError(t, err, "compiler-owned job.services expression should be allowed")
+	})
+
+	t.Run("Path A - schema enabled - heredoc expression passes", func(t *testing.T) {
+		err := compiler.validateTemplateInjection(heredocExpressionYAML, lockFile, markdownPath, parseYAML(t, heredocExpressionYAML))
+		assert.NoError(t, err, "expressions inside heredoc content should not be flagged")
+	})
+
+	t.Run("Path B - schema disabled - heredoc expression passes", func(t *testing.T) {
+		err := compiler.validateTemplateInjection(heredocExpressionYAML, lockFile, markdownPath, nil)
+		assert.NoError(t, err, "expressions inside heredoc content should not be flagged")
 	})
 
 	t.Run("both paths agree on unsafe YAML", func(t *testing.T) {
