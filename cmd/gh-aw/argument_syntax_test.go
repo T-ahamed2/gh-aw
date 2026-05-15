@@ -44,6 +44,13 @@ func TestArgumentSyntaxConsistency(t *testing.T) {
 			argsValidator:  "MinimumNArgs(1)",
 			shouldValidate: func(cmd *cobra.Command) error { return cmd.Args(cmd, []string{"test"}) },
 		},
+		{
+			name:           "deploy command requires workflow",
+			command:        cli.NewDeployCommand(validateEngine),
+			expectedUse:    "deploy <workflow>...",
+			argsValidator:  "MinimumNArgs(1)",
+			shouldValidate: func(cmd *cobra.Command) error { return cmd.Args(cmd, []string{"test"}) },
+		},
 
 		// Commands with optional arguments (using square brackets [])
 		{
@@ -306,6 +313,7 @@ func TestArgumentNamingConventions(t *testing.T) {
 		compileCmd,
 		runCmd,
 		cli.NewAddCommand(validateEngine),
+		cli.NewDeployCommand(validateEngine),
 		cli.NewAddWizardCommand(validateEngine),
 		cli.NewUpdateCommand(validateEngine),
 		cli.NewTrialCommand(validateEngine),

@@ -660,6 +660,9 @@ Use "` + string(constants.CLIExtensionPrefix) + ` help all" to show help for all
 	// Create and setup update command
 	updateCmd := cli.NewUpdateCommand(validateEngine)
 
+	// Create and setup deploy command
+	deployCmd := cli.NewDeployCommand(validateEngine)
+
 	// Create and setup trial command
 	trialCmd := cli.NewTrialCommand(validateEngine)
 
@@ -784,6 +787,7 @@ Use "` + string(constants.CLIExtensionPrefix) + ` help all" to show help for all
 	addWizardCmd.GroupID = "setup"
 	removeCmd.GroupID = "setup"
 	updateCmd.GroupID = "setup"
+	deployCmd.GroupID = "setup"
 	upgradeCmd.GroupID = "setup"
 	secretsCmd.GroupID = "setup"
 
@@ -824,6 +828,7 @@ Use "` + string(constants.CLIExtensionPrefix) + ` help all" to show help for all
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(addWizardCmd)
 	rootCmd.AddCommand(updateCmd)
+	rootCmd.AddCommand(deployCmd)
 	rootCmd.AddCommand(upgradeCmd)
 	rootCmd.AddCommand(trialCmd)
 	rootCmd.AddCommand(newCmd)
