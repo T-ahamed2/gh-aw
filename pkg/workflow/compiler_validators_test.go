@@ -338,9 +338,9 @@ func TestWarnPromptTmpPaths(t *testing.T) {
 			expectWarning: true,
 		},
 		{
-			name:          "/tmp/gh-aw/ without agent subdir",
+			name:          "/tmp/gh-aw/ subpath is safe",
 			content:       "Write your output to /tmp/gh-aw/result.json",
-			expectWarning: true,
+			expectWarning: false,
 		},
 		{
 			name:          "/tmp/ root only",
@@ -351,6 +351,26 @@ func TestWarnPromptTmpPaths(t *testing.T) {
 			name:          "mix of correct and raw /tmp/ reference",
 			content:       "Prefer /tmp/gh-aw/agent/ but avoid plain /tmp/foo paths.",
 			expectWarning: true,
+		},
+		{
+			name:          "cache-memory path is safe",
+			content:       "Read state from /tmp/gh-aw/cache-memory/my-workflow/state.json",
+			expectWarning: false,
+		},
+		{
+			name:          "named cache-memory path is safe",
+			content:       "Use /tmp/gh-aw/cache-memory-focus-areas/ for storage.",
+			expectWarning: false,
+		},
+		{
+			name:          "repo-memory path is safe",
+			content:       "Access shared memory at /tmp/gh-aw/repo-memory/default/metrics.json",
+			expectWarning: false,
+		},
+		{
+			name:          "comment-memory path is safe",
+			content:       "Append haiku to /tmp/gh-aw/comment-memory/notes.md",
+			expectWarning: false,
 		},
 	}
 
@@ -391,9 +411,9 @@ func TestValidatePromptTmpPaths(t *testing.T) {
 			expectWarn: true,
 		},
 		{
-			name:       "/tmp/gh-aw/ without agent — warning",
+			name:       "/tmp/gh-aw/ subpath — no warning",
 			markdown:   "Write summary to /tmp/gh-aw/summary.txt",
-			expectWarn: true,
+			expectWarn: false,
 		},
 	}
 

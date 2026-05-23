@@ -222,17 +222,17 @@ func (c *Compiler) generateAWFReflectSummary(yaml *strings.Builder, data *Workfl
 // container) because GITHUB_OUTPUT is not mounted into the AWF sandbox.
 // The step is only emitted when the engine provides a detection script via GetErrorDetectionScriptId.
 func (c *Compiler) generateDetectAgentErrorsStep(yaml *strings.Builder, data *WorkflowData, engine CodingAgentEngine) {
-scriptId := engine.GetErrorDetectionScriptId()
-if scriptId == "" {
-compilerYamlLog.Printf("Skipping error detection step: engine %s has no detection script", engine.GetID())
-return
-}
+	scriptId := engine.GetErrorDetectionScriptId()
+	if scriptId == "" {
+		compilerYamlLog.Printf("Skipping error detection step: engine %s has no detection script", engine.GetID())
+		return
+	}
 
-compilerYamlLog.Printf("Generating error detection step for engine: %s (script=%s)", engine.GetID(), scriptId)
+	compilerYamlLog.Printf("Generating error detection step for engine: %s (script=%s)", engine.GetID(), scriptId)
 
-yaml.WriteString("      - name: Detect agent errors\n")
-yaml.WriteString("        if: always()\n")
-fmt.Fprintf(yaml, "        id: %s\n", constants.DetectAgentErrorsStepID)
-yaml.WriteString("        continue-on-error: true\n")
-fmt.Fprintf(yaml, "        run: node \"${RUNNER_TEMP}/gh-aw/actions/%s.cjs\"\n", scriptId)
+	yaml.WriteString("      - name: Detect agent errors\n")
+	yaml.WriteString("        if: always()\n")
+	fmt.Fprintf(yaml, "        id: %s\n", constants.DetectAgentErrorsStepID)
+	yaml.WriteString("        continue-on-error: true\n")
+	fmt.Fprintf(yaml, "        run: node \"${RUNNER_TEMP}/gh-aw/actions/%s.cjs\"\n", scriptId)
 }
