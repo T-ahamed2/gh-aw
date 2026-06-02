@@ -34,6 +34,7 @@ const {
   extractModelIds,
   fetchAWFReflect,
   fetchModelsFromUrl,
+  generateCopilotConnectionToken,
   GEMINI_MODEL_NAME_PREFIX,
   PROMPT_FILE_INLINE_THRESHOLD_BYTES,
   resolvePromptFileArgs,
@@ -73,6 +74,21 @@ describe("copilot_harness.cjs", () => {
       expect(CAPI_ERROR_400_PATTERN.test("Error: ENOENT: no such file")).toBe(false);
       expect(CAPI_ERROR_400_PATTERN.test("Fatal: out of memory")).toBe(false);
       expect(CAPI_ERROR_400_PATTERN.test("")).toBe(false);
+    });
+  });
+
+  describe("generateCopilotConnectionToken", () => {
+    it("generates a 32-byte hex token", () => {
+      const token = generateCopilotConnectionToken();
+      expect(token).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it("uses a pluggable random byte source", () => {
+      const randomBytes = vi.fn(() => Buffer.alloc(32, 0xab));
+      const token = generateCopilotConnectionToken({ randomBytes });
+      expect(token).toMatch(/^[a-f0-9]{64}$/);
+      expect(token).toBe("ab".repeat(32));
+      expect(randomBytes).toHaveBeenCalledWith(32);
     });
   });
 
@@ -281,6 +297,7 @@ describe("copilot_harness.cjs", () => {
       it("passes custom provider and model through to SDK createSession", async () => {
         const disconnect = vi.fn().mockResolvedValue(undefined);
         const stop = vi.fn().mockResolvedValue(undefined);
+        const forUri = vi.fn(() => ({}));
         const createSession = vi.fn().mockResolvedValue({
           sessionId: "session-provider",
           on: () => {},
@@ -301,7 +318,7 @@ describe("copilot_harness.cjs", () => {
           provider: { type: "openai", baseUrl: "http://api-proxy:10002" },
           sdkModule: {
             CopilotClient: FakeCopilotClient,
-            RuntimeConnection: { forUri: vi.fn(() => ({})) },
+            RuntimeConnection: { forUri },
             approveAll: () => "allow",
           },
         });
@@ -313,6 +330,39 @@ describe("copilot_harness.cjs", () => {
             provider: { type: "openai", baseUrl: "http://api-proxy:10002" },
           })
         );
+        expect(forUri).toHaveBeenCalledWith("http://127.0.0.1:3002", {});
+      });
+
+      it("passes COPILOT_CONNECTION_TOKEN to RuntimeConnection.forUri", async () => {
+        const disconnect = vi.fn().mockResolvedValue(undefined);
+        const stop = vi.fn().mockResolvedValue(undefined);
+        const forUri = vi.fn(() => ({}));
+        const createSession = vi.fn().mockResolvedValue({
+          sessionId: "session-connection-token",
+          on: () => {},
+          sendAndWait: vi.fn().mockResolvedValue({ data: { content: "ok" } }),
+          disconnect,
+        });
+        class FakeCopilotClient {
+          start = vi.fn().mockResolvedValue(undefined);
+          createSession = createSession;
+          stop = stop;
+        }
+
+        const result = await runWithCopilotSDK({
+          sdkUri: "http://127.0.0.1:3002",
+          prompt: "test prompt",
+          logger: () => {},
+          connectionToken: "token-123",
+          sdkModule: {
+            CopilotClient: FakeCopilotClient,
+            RuntimeConnection: { forUri },
+            approveAll: () => "allow",
+          },
+        });
+
+        expect(result.exitCode).toBe(0);
+        expect(forUri).toHaveBeenCalledWith("http://127.0.0.1:3002", { connectionToken: "token-123" });
       });
     });
 
