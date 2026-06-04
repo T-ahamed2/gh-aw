@@ -333,10 +333,7 @@ function resolveCopilotSDKCustomProviderFromReflect(options) {
     return null;
   }
 
-  const endpoint =
-    (configuredModel ? endpoints.find(ep => Array.isArray(ep.models) && ep.models.includes(configuredModel)) : null) ||
-    endpoints.find(ep => String(ep.provider || "").toLowerCase() === "copilot") ||
-    endpoints[0];
+  const endpoint = (configuredModel ? endpoints.find(ep => Array.isArray(ep.models) && ep.models.includes(configuredModel)) : null) || endpoints.find(ep => String(ep.provider || "").toLowerCase() === "copilot") || endpoints[0];
 
   let baseUrl = "";
   if (typeof endpoint?.models_url === "string" && endpoint.models_url) {

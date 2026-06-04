@@ -630,4 +630,3 @@ This is a test workflow without contents read permission.
 
 	t.Logf("Successfully verified PR context instructions are NOT included without contents permission")
 }
-
