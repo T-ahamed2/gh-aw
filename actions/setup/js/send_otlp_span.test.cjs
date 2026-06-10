@@ -38,7 +38,6 @@ const {
   resolveEngineId,
   parseOTLPCustomAttributes,
   buildCustomOTLPAttributes,
-  buildOTLPMetricsPayload,
 } = await import("./send_otlp_span.cjs");
 
 const { readExperimentAssignments, EXPERIMENT_ASSIGNMENTS_PATH } = await import("./experiment_helpers.cjs");
@@ -6496,76 +6495,10 @@ describe("sendJobConclusionSpan custom attributes", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildOTLPMetricsPayload
+// sendJobConclusionSpan — no OTLP metric emission
 // ---------------------------------------------------------------------------
 
-describe("buildOTLPMetricsPayload", () => {
-  it("produces a valid OTLP resourceMetrics payload for a Sum metric", () => {
-    const payload = buildOTLPMetricsPayload({
-      name: "gh_aw.aic",
-      description: "AI Credits consumed by this workflow run",
-      unit: "AIC",
-      value: 0.125,
-      startMs: 1_700_000_000_000,
-      endMs: 1_700_000_060_000,
-      attributes: [buildAttr("gh-aw.workflow.name", "my-workflow")],
-      serviceName: "gh-aw",
-      scopeVersion: "1.2.3",
-    });
-
-    expect(payload).toHaveProperty("resourceMetrics");
-    const rm = payload.resourceMetrics[0];
-    // resource carries service.name
-    const serviceNameAttr = rm.resource.attributes.find(a => a.key === "service.name");
-    expect(serviceNameAttr).toBeDefined();
-    expect(serviceNameAttr.value.stringValue).toBe("gh-aw");
-
-    // scope name and version
-    const sm = rm.scopeMetrics[0];
-    expect(sm.scope.name).toBe("gh-aw");
-    expect(sm.scope.version).toBe("1.2.3");
-
-    // metric definition
-    const metric = sm.metrics[0];
-    expect(metric.name).toBe("gh_aw.aic");
-    expect(metric.unit).toBe("AIC");
-    expect(metric).toHaveProperty("sum");
-    expect(metric.sum.aggregationTemporality).toBe(2); // CUMULATIVE
-    expect(metric.sum.isMonotonic).toBe(true);
-
-    // data point
-    const dp = metric.sum.dataPoints[0];
-    expect(dp.asDouble).toBe(0.125);
-    expect(dp.startTimeUnixNano).toBe(toNanoString(1_700_000_000_000));
-    expect(dp.timeUnixNano).toBe(toNanoString(1_700_000_060_000));
-
-    // attribute forwarded to data point
-    const wfAttr = dp.attributes.find(a => a.key === "gh-aw.workflow.name");
-    expect(wfAttr).toBeDefined();
-    expect(wfAttr.value.stringValue).toBe("my-workflow");
-  });
-
-  it("omits scope version when not provided", () => {
-    const payload = buildOTLPMetricsPayload({
-      name: "gh_aw.aic",
-      description: "AIC",
-      unit: "AIC",
-      value: 1,
-      startMs: 0,
-      endMs: 1000,
-      attributes: [],
-      serviceName: "gh-aw",
-    });
-    const sm = payload.resourceMetrics[0].scopeMetrics[0];
-    expect(sm.scope).not.toHaveProperty("version");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// sendJobConclusionSpan — gh-aw.aic metric emission
-// ---------------------------------------------------------------------------
-
-describe("sendJobConclusionSpan gh-aw.aic metric", () => {
+describe("sendJobConclusionSpan does not emit OTLP metrics", () => {
   let readFileSpy;
   let statSpy;
 
@@ -6595,28 +6528,18 @@ describe("sendJobConclusionSpan gh-aw.aic metric", () => {
     delete process.env.GH_AW_OTLP_ENDPOINTS;
   });
 
-  it("sends a /v1/metrics POST with gh_aw.aic when aiCredits > 0", async () => {
+  it("does not send a /v1/metrics POST when aiCredits > 0", async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, statusText: "OK" });
     vi.stubGlobal("fetch", mockFetch);
     process.env.GH_AW_OTLP_ENDPOINTS = JSON.stringify([{ url: "https://traces.example.com" }]);
 
     await sendJobConclusionSpan("gh-aw.agent.conclusion", { startMs: 1_700_000_000_000 });
 
-    // Identify the /v1/metrics call (separate from /v1/traces calls)
     const metricsCalls = mockFetch.mock.calls.filter(([url]) => url.includes("/v1/metrics"));
-    expect(metricsCalls.length).toBe(1);
+    expect(metricsCalls.length).toBe(0);
 
-    const metricsBody = JSON.parse(metricsCalls[0][1].body);
-    expect(metricsBody).toHaveProperty("resourceMetrics");
-    const metric = metricsBody.resourceMetrics[0].scopeMetrics[0].metrics[0];
-    expect(metric.name).toBe("gh_aw.aic");
-    expect(metric.unit).toBe("AIC");
-    expect(metric.sum.isMonotonic).toBe(true);
-    expect(metric.sum.dataPoints[0].asDouble).toBe(0.5);
-
-    // Dimension attributes on the data point
-    const dpAttrMap = Object.fromEntries(metric.sum.dataPoints[0].attributes.map(a => [a.key, a.value.stringValue ?? a.value.doubleValue]));
-    expect(dpAttrMap["gh-aw.job.name"]).toBe("agent");
+    const traceCalls = mockFetch.mock.calls.filter(([url]) => url.includes("/v1/traces"));
+    expect(traceCalls.length).toBeGreaterThan(0);
   });
 
   it("does not send a /v1/metrics POST when aiCredits is 0", async () => {
@@ -6634,6 +6557,9 @@ describe("sendJobConclusionSpan gh-aw.aic metric", () => {
 
     const metricsCalls = mockFetch.mock.calls.filter(([url]) => url.includes("/v1/metrics"));
     expect(metricsCalls.length).toBe(0);
+
+    const traceCalls = mockFetch.mock.calls.filter(([url]) => url.includes("/v1/traces"));
+    expect(traceCalls.length).toBeGreaterThan(0);
   });
 
   it("does not send a /v1/metrics POST for non-agent jobs", async () => {
@@ -6647,5 +6573,8 @@ describe("sendJobConclusionSpan gh-aw.aic metric", () => {
 
     const metricsCalls = mockFetch.mock.calls.filter(([url]) => url.includes("/v1/metrics"));
     expect(metricsCalls.length).toBe(0);
+
+    const traceCalls = mockFetch.mock.calls.filter(([url]) => url.includes("/v1/traces"));
+    expect(traceCalls.length).toBeGreaterThan(0);
   });
 });
