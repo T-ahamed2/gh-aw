@@ -5,7 +5,7 @@ template: splash
 tableOfContents: true
 hero:
   title: GitHub Agentic Workflows
-  tagline: <strong>Repository automation, running the coding agents you know and love, with strong guardrails in GitHub Actions.</strong>
+  tagline: <strong>Repository automation fo GitHub, running the coding agents you know and love, with strong guardrails and cost controls.</strong>
   actions:
     - text: Quick Start with CLI
       link: /gh-aw/setup/quick-start/
@@ -16,7 +16,6 @@ hero:
       icon: right-arrow
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
 import FeatureCard from '../../components/FeatureCard.astro';
 import FeatureGrid from '../../components/FeatureGrid.astro';
 import Video from '../../components/Video.astro';
@@ -69,31 +68,32 @@ flowchart LR
     DETECT --> APPLY["Scoped Write Job"]
 ```
 
-<CardGrid>
-  <Card title="Read-only token">
+<FeatureGrid columns={3}>
+  <FeatureCard title="Read-only token">
     The agent can read repository state, but it cannot
     push commits or write to issues directly.
-  </Card>
-  <Card title="No secrets in agent runtime">
+  </FeatureCard>
+  <FeatureCard title="No secrets in agent runtime">
     Sensitive credentials stay in isolated downstream
     jobs, not inside the agent process.
-  </Card>
-  <Card title="Sandbox + network firewall">
-    The agent runs in a container behind the
-    [Agent Workflow Firewall](/gh-aw/introduction/architecture/#agent-workflow-firewall-awf)
+  </FeatureCard>
+  <FeatureCard title="Sandbox + network firewall" href="/gh-aw/introduction/architecture/#agent-workflow-firewall-awf">
+    The agent runs in a container behind the Agent Workflow Firewall
     and can only reach allowed destinations.
-  </Card>
-  <Card title="Safe outputs gate">
-    Requested actions are validated against your
-    configured [safe outputs](/gh-aw/reference/safe-outputs/)
+  </FeatureCard>
+  <FeatureCard title="Safe outputs gate" href="/gh-aw/reference/safe-outputs/">
+    Requested actions are validated against your configured safe outputs
     policy before anything is applied.
-  </Card>
-  <Card title="Threat detection">
-    A dedicated
-    [threat detection job](/gh-aw/reference/threat-detection/)
-    scans proposed outputs and blocks suspicious changes.
-  </Card>
-</CardGrid>
+  </FeatureCard>
+  <FeatureCard title="Threat detection" href="/gh-aw/reference/threat-detection/">
+    A dedicated threat detection job scans proposed outputs and blocks
+    suspicious changes.
+  </FeatureCard>
+  <FeatureCard title="Compile-time validation" href="/gh-aw/introduction/architecture/#compilation-time-security">
+    Schema validation, expression allowlisting, action pinning, and security
+    scanners reject misconfigurations before deployment.
+  </FeatureCard>
+</FeatureGrid>
 
 See the [Security Architecture](/gh-aw/introduction/architecture/) for a full breakdown of the layered defense-in-depth model.
 
