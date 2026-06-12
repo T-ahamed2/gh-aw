@@ -6,7 +6,7 @@ sidebar:
 ---
 
 > [!NOTE]
-> GitHub Agentic Workflows is in early development and may change significantly. Using automated agentic workflows requires careful attention to security considerations and careful human supervision, and even then things can still go wrong. Use it with caution, and at your own risk.
+> GitHub Agentic Workflows is in Public Preview and may change significantly.
 
 ## Determinism
 
