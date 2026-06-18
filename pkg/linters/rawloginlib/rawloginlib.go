@@ -55,17 +55,17 @@ func run(pass *analysis.Pass) (any, error) {
 		if !ok {
 			return
 		}
-		ident, ok := sel.X.(*ast.Ident)
-		if !ok {
+		if !astutil.IsPkgSelector(pass, sel, "log") {
 			return
 		}
-		if ident.Name == "log" && rawLogFuncs[sel.Sel.Name] {
-			position := pass.Fset.PositionFor(call.Pos(), false)
-			if nolint.HasDirective(position, noLintLinesByFile) {
-				return
-			}
-			pass.ReportRangef(call, "log.%s called in library package %s; use pkg/logger instead", sel.Sel.Name, pkgPath)
+		if !rawLogFuncs[sel.Sel.Name] {
+			return
 		}
+		position := pass.Fset.PositionFor(call.Pos(), false)
+		if nolint.HasDirective(position, noLintLinesByFile) {
+			return
+		}
+		pass.ReportRangef(call, "log.%s called in library package %s; use pkg/logger instead", sel.Sel.Name, pkgPath)
 	})
 
 	return nil, nil
