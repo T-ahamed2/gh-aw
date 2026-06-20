@@ -704,7 +704,7 @@ func buildUsageArtifactUploadSteps(prefix string, pinAction func(string) string)
 		"          [ -f /tmp/gh-aw/usage/agent/token_usage.jsonl ] || : > /tmp/gh-aw/usage/agent/token_usage.jsonl\n",
 		"          [ -f /tmp/gh-aw/usage/detection/token_usage.jsonl ] || : > /tmp/gh-aw/usage/detection/token_usage.jsonl\n",
 		"          mkdir -p /tmp/gh-aw/usage/activity\n",
-		"          python - <<'PY'\n",
+		"          python3 - <<'PY'\n",
 		"          import glob\n",
 		"          import json\n",
 		"          import os\n",

@@ -93,8 +93,9 @@ func applyUsageActivitySummaryToResult(summary *usageActivitySummary, result *Do
 			servers = append(servers, MCPServerStats{
 				ServerName: server.ServerName,
 				// Keep both RequestCount and ToolCallCount aligned because MCPServerStats
-				// exposes both fields in reports; for usage aggregates we only have call counts.
-				// Populate both with the same value to preserve backward-compatible output.
+				// distinguishes overall request volume (RequestCount) from tool-invocation
+				// volume (ToolCallCount). In usage-aggregate mode we only have per-server
+				// tool-call counts, so both fields are populated from that single source.
 				RequestCount:  server.ToolCallCount,
 				ToolCallCount: server.ToolCallCount,
 				ErrorCount:    server.FailedCalls,
