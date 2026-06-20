@@ -21,7 +21,15 @@ type usageActivityFirewall struct {
 }
 
 type usageActivitySession struct {
-	Turns int `json:"turns"`
+	TotalEvents            int `json:"total_events"`
+	SessionStarts          int `json:"session_starts"`
+	SessionShutdowns       int `json:"session_shutdowns"`
+	Turns                  int `json:"turns"`
+	AssistantMessages      int `json:"assistant_messages"`
+	ReasoningEvents        int `json:"reasoning_events"`
+	ToolExecutionStarts    int `json:"tool_execution_starts"`
+	ToolExecutionCompletes int `json:"tool_execution_completes"`
+	FailedToolExecutions   int `json:"failed_tool_executions"`
 }
 
 type usageActivityGateway struct {
