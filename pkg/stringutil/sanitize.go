@@ -74,11 +74,61 @@ func SanitizeName(name string, opts *SanitizeOptions) string {
 		opts = &SanitizeOptions{}
 	}
 
-	result := normalizeSanitizeSeparators(strings.ToLower(name), opts)
-	result = applySanitizePattern(result, buildSanitizePreservePattern(opts), len(opts.PreserveSpecialChars) > 0)
+	var sb strings.Builder
+	sb.Grow(len(name))
 
-	// Consolidate multiple consecutive hyphens into a single hyphen
-	result = multipleHyphens.ReplaceAllString(result, "-")
+	preserveSpecial := len(opts.PreserveSpecialChars) > 0
+	lastWasHyphen := false
+
+	for _, r := range name {
+		// Convert to lowercase manually to avoid full string lowercasing
+		if r >= 'A' && r <= 'Z' {
+			r += ('a' - 'A')
+		}
+
+		var target rune
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-':
+			target = r
+		case r == ':' || r == '\\' || r == '/' || r == ' ':
+			target = '-'
+		case r == '.' || r == '_':
+			// Check if we should preserve these
+			preserved := false
+			for _, p := range opts.PreserveSpecialChars {
+				if r == p {
+					preserved = true
+					break
+				}
+			}
+			if preserved {
+				target = r
+			} else {
+				target = '-'
+			}
+		default:
+			if preserveSpecial {
+				target = '-'
+			} else {
+				// Skip entirely
+				continue
+			}
+		}
+
+		// Consolidate multiple hyphens
+		if target == '-' {
+			if lastWasHyphen {
+				continue
+			}
+			lastWasHyphen = true
+		} else {
+			lastWasHyphen = false
+		}
+
+		sb.WriteRune(target)
+	}
+
+	result := sb.String()
 
 	// Optionally trim leading/trailing hyphens
 	if opts.TrimHyphens {
