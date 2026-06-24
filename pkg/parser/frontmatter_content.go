@@ -136,7 +136,7 @@ func extractFrontmatterMetadata(frontmatterYAML string, frontmatterStart int) ([
 			continue
 		}
 
-		if line != "" && line[0] != ' ' && line[0] != '\t' {
+		if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
 			colonIdx := strings.IndexByte(trimmed, ':')
 			if colonIdx > 0 {
 				key := strings.TrimSpace(trimmed[:colonIdx])
@@ -368,7 +368,7 @@ func generateDefaultWorkflowName(filePath string) string {
 	// Capitalize first letter of each word
 	words := strings.Fields(baseName)
 	for i, word := range words {
-		if word != "" {
+		if len(word) > 0 {
 			words[i] = strings.ToUpper(word[:1]) + word[1:]
 		}
 	}

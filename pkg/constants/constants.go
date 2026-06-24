@@ -51,7 +51,7 @@ func (c CommandPrefix) String() string {
 
 // IsValid returns true if the command prefix is non-empty
 func (c CommandPrefix) IsValid() bool {
-	return c != ""
+	return len(c) > 0
 }
 
 // WorkflowID represents a workflow identifier (basename without .md extension).

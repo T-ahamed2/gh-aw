@@ -205,7 +205,7 @@ func generateHumanReadableName(actionName string) string {
 	// Replace underscores with spaces and capitalize words
 	words := strings.Split(actionName, "_")
 	for i, word := range words {
-		if word != "" {
+		if len(word) > 0 {
 			words[i] = strings.ToUpper(word[:1]) + word[1:]
 		}
 	}

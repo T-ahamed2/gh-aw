@@ -149,7 +149,7 @@ func parseAndDisplayRunnerGuardOutput(stdout string, verbose bool, gitRoot strin
 
 	trimmed := strings.TrimSpace(stdout)
 	if !strings.HasPrefix(trimmed, "{") && !strings.HasPrefix(trimmed, "[") {
-		if trimmed != "" {
+		if len(trimmed) > 0 {
 			return 0, fmt.Errorf("unexpected runner-guard output format: %s", trimmed)
 		}
 		return 0, nil

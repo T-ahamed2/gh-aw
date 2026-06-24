@@ -2,13 +2,15 @@ package stringutil
 
 import (
 	"regexp"
+	"slices"
 	"strings"
-	"unicode"
 
 	"github.com/github/gh-aw/pkg/logger"
 )
 
 var sanitizeLog = logger.New("stringutil:sanitize")
+
+var multipleHyphens = regexp.MustCompile(`-+`)
 
 // Regex patterns for detecting potential secret key names
 var (
@@ -64,55 +66,57 @@ type SanitizeOptions struct {
 
 // SanitizeName sanitizes a string for use as an identifier, file name, or similar context.
 // It provides configurable behavior through the SanitizeOptions parameter.
-//
-// Performance optimization: implemented as a single-pass loop with strings.Builder
-// to avoid multiple string allocations and regex overhead.
 func SanitizeName(name string, opts *SanitizeOptions) string {
 	logSanitizeInput(name, opts)
 
+	// Handle nil options
 	if opts == nil {
 		opts = &SanitizeOptions{}
-	}
-
-	preserveDot := false
-	preserveUnderscore := false
-	for _, r := range opts.PreserveSpecialChars {
-		switch r {
-		case '.':
-			preserveDot = true
-		case '_':
-			preserveUnderscore = true
-		}
 	}
 
 	var sb strings.Builder
 	sb.Grow(len(name))
 
+	preserveSpecial := len(opts.PreserveSpecialChars) > 0
 	lastWasHyphen := false
-	for _, r := range name {
-		var mapped rune
-		r = unicode.ToLower(r)
 
-		// Check if it's an allowed character
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			mapped = r
-		} else if r == '.' && preserveDot {
-			mapped = r
-		} else if r == '_' && preserveUnderscore {
-			mapped = r
-		} else if r == ':' || r == '\\' || r == '/' || r == ' ' || (!preserveUnderscore && r == '_') {
-			// Common separators are converted to hyphens
-			mapped = '-'
-		} else if len(opts.PreserveSpecialChars) > 0 {
-			// Other characters are converted to hyphens if we are in "preserve special chars" mode
-			mapped = '-'
-		} else {
-			// Otherwise they are ignored
-			continue
+	for _, r := range name {
+		// Convert to lowercase manually to avoid full string lowercasing
+		if r >= 'A' && r <= 'Z' {
+			r += ('a' - 'A')
 		}
 
-		// Consolidate hyphens
-		if mapped == '-' {
+		var target rune
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-':
+			target = r
+		case r == ':' || r == '\\' || r == '/' || r == ' ':
+			target = '-'
+		case r == '.' || r == '_':
+			// Check if we should preserve these
+			preserved := false
+			for _, p := range opts.PreserveSpecialChars {
+				if r == p {
+					preserved = true
+					break
+				}
+			}
+			if preserved {
+				target = r
+			} else {
+				target = '-'
+			}
+		default:
+			if preserveSpecial {
+				target = '-'
+			} else {
+				// Skip entirely
+				continue
+			}
+		}
+
+		// Consolidate multiple hyphens
+		if target == '-' {
 			if lastWasHyphen {
 				continue
 			}
@@ -121,7 +125,7 @@ func SanitizeName(name string, opts *SanitizeOptions) string {
 			lastWasHyphen = false
 		}
 
-		sb.WriteRune(mapped)
+		sb.WriteRune(target)
 	}
 
 	result := sb.String()
@@ -154,6 +158,43 @@ func logSanitizeInput(name string, opts *SanitizeOptions) {
 	}
 	sanitizeLog.Printf("Sanitizing name: input=%q, preserve_chars=%d, trim_hyphens=%t",
 		name, preserveCount, trimHyphens)
+}
+
+// normalizeSanitizeSeparators converts common separators to hyphens and optionally
+// converts underscores when they are not in the preserve list.
+func normalizeSanitizeSeparators(result string, opts *SanitizeOptions) string {
+	result = strings.ReplaceAll(result, ":", "-")
+	result = strings.ReplaceAll(result, "\\", "-")
+	result = strings.ReplaceAll(result, "/", "-")
+	result = strings.ReplaceAll(result, " ", "-")
+	if !slices.Contains(opts.PreserveSpecialChars, '_') {
+		result = strings.ReplaceAll(result, "_", "-")
+	}
+	return result
+}
+
+// buildSanitizePreservePattern builds a regex character class of allowed characters.
+func buildSanitizePreservePattern(opts *SanitizeOptions) string {
+	var preserveChars strings.Builder
+	preserveChars.WriteString("a-z0-9-") // Always preserve alphanumeric and hyphens
+	for _, char := range opts.PreserveSpecialChars {
+		switch char {
+		case '.', '_':
+			preserveChars.WriteRune(char)
+		}
+	}
+	return preserveChars.String()
+}
+
+// applySanitizePattern removes or replaces characters not in the allowed set.
+// When the caller has requested preservation of special chars, unwanted chars are
+// replaced with hyphens; otherwise they are removed entirely.
+func applySanitizePattern(result, allowedChars string, preserveSpecialChars bool) string {
+	pattern := regexp.MustCompile(`[^` + allowedChars + `]+`)
+	if preserveSpecialChars {
+		return pattern.ReplaceAllString(result, "-")
+	}
+	return pattern.ReplaceAllString(result, "")
 }
 
 // SanitizeErrorMessage removes potential secret key names from error messages to prevent
@@ -215,7 +256,7 @@ func SanitizeIdentifierName(name string, extraAllowed func(rune) bool) string {
 	}, name)
 
 	// Ensure it doesn't start with a number
-	if result != "" && result[0] >= '0' && result[0] <= '9' {
+	if len(result) > 0 && result[0] >= '0' && result[0] <= '9' {
 		result = "_" + result
 	}
 

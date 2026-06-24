@@ -521,7 +521,7 @@ func checkCleanWorkingDirectory(verbose bool) error {
 		return fmt.Errorf("failed to check git status: %w", err)
 	}
 
-	if strings.TrimSpace(string(output)) != "" {
+	if len(strings.TrimSpace(string(output))) > 0 {
 		return errors.New("working directory has uncommitted changes, please commit or stash them first")
 	}
 
@@ -579,7 +579,7 @@ func checkWorkflowFileStatus(workflowPath string) (*WorkflowFileStatus, error) {
 	}
 
 	statusOutput := string(output) // Don't trim - the leading space is significant!
-	if statusOutput != "" {
+	if len(statusOutput) > 0 {
 		gitLog.Printf("Git status output: %q", statusOutput)
 		// Parse the status line (format: XY filename)
 		// X = index (staged) status, Y = working tree (unstaged) status
@@ -623,7 +623,7 @@ func checkWorkflowFileStatus(workflowPath string) (*WorkflowFileStatus, error) {
 		return status, nil // Ignore error, return current status
 	}
 
-	if strings.TrimSpace(string(output)) != "" {
+	if len(strings.TrimSpace(string(output))) > 0 {
 		status.HasUnpushedCommits = true
 		gitLog.Print("File has unpushed commits")
 	}

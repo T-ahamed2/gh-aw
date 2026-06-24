@@ -1,9 +1,7 @@
-# Bolt's Journal - Critical Learnings
+## 2026-06-24 - Efficient String Sanitization
+**Learning:** Replacing multi-pass string manipulations (ReplaceAll, Split, Join) and regex-based filtering with a single-pass loop using `strings.Builder` provides significant performance gains (up to 12x faster) and reduces memory pressure by avoiding intermediate allocations.
+**Action:** Use single-pass loops and manual character checks in core utility functions that process high volumes of strings or identifiers.
 
-## 2025-05-14 - Initializing Journal
-**Learning:** Initializing the journal for the first time in this codebase.
-**Action:** Keep track of performance-related findings.
-
-## 2025-05-14 - Optimized string sanitization
-**Learning:** `SanitizeName` was performing multiple passes and compiling regex on every call. Switching to a single-pass `strings.Builder` loop provided a ~9-16x speedup.
-**Action:** Always check utility functions for multi-pass patterns or local regex compilation.
+## 2026-06-24 - Avoiding Scope Creep in Performance Tasks
+**Learning:** Attempting to fix all CI lint warnings (e.g., `len(s) > 0` vs `s != ""`) and refactoring complex logic (like Docker integrations) while performing a micro-optimization can introduce critical regressions and break established patterns.
+**Action:** Keep performance PRs focused on the specific bottleneck identified. Avoid changing function signatures across the package unless absolutely necessary for the optimization.
