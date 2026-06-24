@@ -77,9 +77,10 @@ func SanitizeName(name string, opts *SanitizeOptions) string {
 	preserveDot := false
 	preserveUnderscore := false
 	for _, r := range opts.PreserveSpecialChars {
-		if r == '.' {
+		switch r {
+		case '.':
 			preserveDot = true
-		} else if r == '_' {
+		case '_':
 			preserveUnderscore = true
 		}
 	}
