@@ -1,0 +1,16 @@
+{
+  "counts": {
+    "sub_agent_strategy": {
+      "single_agent": 1
+    }
+  },
+  "runs": [
+    {
+      "run_id": "28127238926",
+      "timestamp": "2026-06-24T20:25:44.983Z",
+      "assignments": {
+        "sub_agent_strategy": "single_agent"
+      }
+    }
+  ]
+}
