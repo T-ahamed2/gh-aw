@@ -1,0 +1,4 @@
+## 2026-06-24 - Git Argument Injection Mitigation
+**Vulnerability:** Several `exec.Command` calls for `git` (clone, checkout, ls-remote, archive) passed user-controlled strings (URLs, branch names, paths) directly as positional arguments without a `--` separator.
+**Learning:** This allowed "Flag Injection" or "Argument Injection" where a malicious string starting with `-` could be interpreted as a CLI option (e.g., providing `--upload-pack=...` as a repository URL to execute arbitrary commands).
+**Prevention:** Always use the `--` separator before positional arguments in Git commands. For `git checkout <ref>`, use `git checkout <ref> --` if no pathspecs are intended, to ensure the ref is correctly parsed even if it looks like a flag. Prefer `exec.CommandContext` to ensure processes can be canceled.

@@ -336,13 +336,13 @@ func copyTrialResultsToHostRepo(tempDir, dateTimeID string, workflowNames []stri
 	}
 
 	// Add trial results to git
-	cmd := exec.Command("git", "add", "trials/")
+	cmd := exec.Command("git", "add", "--", "trials/")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to add trial results: %w (output: %s)", err, string(output))
 	}
 
 	// Check if there are any changes to commit
-	statusCmd := exec.Command("git", "status", "--porcelain", "trials/")
+	statusCmd := exec.Command("git", "status", "--porcelain", "--", "trials/")
 	statusOutput, err := statusCmd.Output()
 	if err != nil {
 		return fmt.Errorf("failed to check git status: %w", err)

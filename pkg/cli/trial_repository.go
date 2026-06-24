@@ -195,7 +195,7 @@ func cloneTrialHostRepository(repoSlug string, verbose bool) (string, error) {
 	repoURL := fmt.Sprintf("https://github.com/%s.git", repoSlug)
 	trialRepoLog.Printf("Cloning repository from URL to tempDir: %s", tempDir)
 
-	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", repoSlug), "clone", repoURL, tempDir)
+	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", repoSlug), "clone", "--", repoURL, tempDir)
 	if err != nil {
 		trialRepoLog.Printf("Failed to clone host repository %s: %v", repoSlug, err)
 		return "", fmt.Errorf("failed to clone host repository %s: %w (output: %s)", repoURL, err, string(output))
@@ -479,7 +479,7 @@ func commitAndPushWorkflow(tempDir, workflowName string, verbose bool) error {
 	fmt.Fprintln(os.Stderr, console.FormatInfoMessage("Committing workflow and lock files to host repository"))
 
 	// Add all changes
-	cmd := exec.Command("git", "add", ".")
+	cmd := exec.Command("git", "add", "--", ".")
 	cmd.Dir = tempDir
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to add changes: %w (output: %s)", err, string(output))
@@ -563,7 +563,7 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 
 	// If a version/tag/SHA is specified, checkout that ref
 	if cloneRepoVersion != "" {
-		checkoutCmd := exec.Command("git", "checkout", cloneRepoVersion)
+		checkoutCmd := exec.Command("git", "checkout", cloneRepoVersion, "--")
 		if output, err := checkoutCmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to checkout ref '%s': %w (output: %s)", cloneRepoVersion, err, string(output))
 		}
