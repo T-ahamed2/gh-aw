@@ -17,7 +17,7 @@ tools:
     - git
     - find
     - grep
-  edit: null
+  edit:
 safe-outputs:
   create-pull-request:
     title-prefix: "[docs] "
