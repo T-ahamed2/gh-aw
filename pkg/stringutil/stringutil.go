@@ -32,20 +32,70 @@ func Truncate(s string, maxLen int) string {
 // NormalizeWhitespace normalizes trailing whitespace and newlines to reduce spurious conflicts.
 // It trims trailing whitespace from each line and ensures exactly one trailing newline.
 func NormalizeWhitespace(content string) string {
-	// Split into lines and trim trailing whitespace from each line
-	lines := strings.Split(content, "\n")
-	for i, line := range lines {
-		lines[i] = strings.TrimRight(line, " \t")
+	if content == "" {
+		return ""
 	}
 
-	// Join back and ensure exactly one trailing newline if content is not empty
-	normalized := strings.Join(lines, "\n")
-	normalized = strings.TrimRight(normalized, "\n")
-	if len(normalized) > 0 {
-		normalized += "\n"
+	// Find the last character that contributes to the output (not space, tab, or newline)
+	lastContributivePos := -1
+	for i := len(content) - 1; i >= 0; i-- {
+		ch := content[i]
+		if ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r' {
+			lastContributivePos = i
+			break
+		}
 	}
 
-	return normalized
+	if lastContributivePos == -1 {
+		return ""
+	}
+
+	var sb strings.Builder
+	// Pre-allocate to avoid multiple reallocations; optimized result is usually
+	// smaller or similar to input size.
+	sb.Grow(len(content))
+
+	lineStart := 0
+	for i := 0; i < len(content); i++ {
+		if content[i] == '\n' {
+			// Current line is [lineStart:i]. Trim trailing spaces/tabs.
+			lineEnd := i
+			for j := i - 1; j >= lineStart; j-- {
+				if content[j] != ' ' && content[j] != '\t' {
+					lineEnd = j + 1
+					break
+				}
+				if j == lineStart {
+					lineEnd = lineStart
+				}
+			}
+
+			// Append trimmed line and newline.
+			sb.WriteString(content[lineStart:lineEnd])
+			sb.WriteByte('\n')
+
+			lineStart = i + 1
+			// If we've passed the last contributive character, we're done.
+			if lineStart > lastContributivePos {
+				break
+			}
+		}
+	}
+
+	// Handle trailing content if it didn't end with a newline and contains contributive chars.
+	if lineStart <= lastContributivePos {
+		lineEnd := len(content)
+		for j := len(content) - 1; j >= lineStart; j-- {
+			if content[j] != ' ' && content[j] != '\t' {
+				lineEnd = j + 1
+				break
+			}
+		}
+		sb.WriteString(content[lineStart:lineEnd])
+		sb.WriteByte('\n')
+	}
+
+	return sb.String()
 }
 
 // ParseVersionValue converts version values of various types to strings.

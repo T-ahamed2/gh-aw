@@ -60,9 +60,29 @@ func NormalizeWorkflowName(name string) string {
 //	NormalizeSafeOutputIdentifier("update-pr")             // returns "update_pr"
 //	NormalizeSafeOutputIdentifier("executor-workflow.agent") // returns "executor_workflow_agent"
 func NormalizeSafeOutputIdentifier(identifier string) string {
-	result := strings.ReplaceAll(identifier, "-", "_")
-	result = strings.ReplaceAll(result, ".", "_")
-	return result
+	// Fast path: check if any replacements are needed
+	needsReplacement := false
+	for i := 0; i < len(identifier); i++ {
+		if identifier[i] == '-' || identifier[i] == '.' {
+			needsReplacement = true
+			break
+		}
+	}
+	if !needsReplacement {
+		return identifier
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(identifier))
+	for i := 0; i < len(identifier); i++ {
+		ch := identifier[i]
+		if ch == '-' || ch == '.' {
+			sb.WriteByte('_')
+		} else {
+			sb.WriteByte(ch)
+		}
+	}
+	return sb.String()
 }
 
 // MarkdownToLockFile converts a workflow markdown file path to its compiled lock file path.
