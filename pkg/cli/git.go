@@ -465,7 +465,7 @@ func getCurrentBranch() (string, error) {
 func createAndSwitchBranch(branchName string, verbose bool) error {
 	console.LogVerbose(verbose, "Creating and switching to branch: "+branchName)
 
-	cmd := exec.Command("git", "checkout", "-b", branchName)
+	cmd := exec.Command("git", "checkout", "-b", branchName, "--")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to create and switch to branch %s: %w", branchName, err)
 	}
@@ -477,7 +477,7 @@ func createAndSwitchBranch(branchName string, verbose bool) error {
 func switchBranch(branchName string, verbose bool) error {
 	console.LogVerbose(verbose, "Switching to branch: "+branchName)
 
-	cmd := exec.Command("git", "checkout", branchName)
+	cmd := exec.Command("git", "checkout", branchName, "--")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to switch to branch %s: %w", branchName, err)
 	}
@@ -503,7 +503,7 @@ func commitChanges(message string, verbose bool) error {
 func pushBranch(branchName string, verbose bool) error {
 	console.LogVerbose(verbose, "Pushing branch: "+branchName)
 
-	cmd := exec.Command("git", "push", "-u", "origin", branchName)
+	cmd := exec.Command("git", "push", "-u", "origin", "--", branchName)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to push branch %s: %w", branchName, err)
 	}
