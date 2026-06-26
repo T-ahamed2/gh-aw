@@ -488,7 +488,7 @@ func TestFindFrontmatterBounds(t *testing.T) {
 			// Count the lines in frontmatterContent
 			actualLines := 0
 			if frontmatterContent != "" {
-				actualLines = len(strings.Split(frontmatterContent, "\n"))
+				actualLines = strings.Count(frontmatterContent, "\n") + 1
 			}
 
 			if actualLines != tt.expectedFrontmatterLines {

@@ -75,7 +75,7 @@ func SanitizeName(name string, opts *SanitizeOptions) string {
 	}
 
 	result := normalizeSanitizeSeparators(strings.ToLower(name), opts)
-	result = applySanitizePattern(result, buildSanitizePreservePattern(opts), len(opts.PreserveSpecialChars) > 0)
+	result = applySanitizePattern(result, buildSanitizePreservePattern(opts), len(opts.PreserveSpecialChars) != 0)
 
 	// Consolidate multiple consecutive hyphens into a single hyphen
 	result = multipleHyphens.ReplaceAllString(result, "-")
@@ -206,7 +206,7 @@ func SanitizeIdentifierName(name string, extraAllowed func(rune) bool) string {
 	}, name)
 
 	// Ensure it doesn't start with a number
-	if len(result) > 0 && result[0] >= '0' && result[0] <= '9' {
+	if result != "" && result[0] >= '0' && result[0] <= '9' {
 		result = "_" + result
 	}
 
