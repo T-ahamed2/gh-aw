@@ -10,6 +10,13 @@ import (
 
 var fuzzyMatchLog = logger.New("stringutil:fuzzy_match")
 
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
 // FindClosestMatches finds the closest matching strings using Levenshtein distance.
 // It returns up to maxResults matches that have a Levenshtein distance of 3 or less.
 // Results are sorted by distance (closest first), then alphabetically for ties.
@@ -33,6 +40,12 @@ func FindClosestMatches(target string, candidates []string, maxResults int) []st
 
 		// Skip exact matches
 		if targetLower == candidateLower {
+			continue
+		}
+
+		// Optimization: if the length difference is greater than maxDistance,
+		// the Levenshtein distance must also be greater than maxDistance.
+		if abs(len(targetLower)-len(candidateLower)) > maxDistance {
 			continue
 		}
 
@@ -76,21 +89,32 @@ func FindClosestMatches(target string, candidates []string, maxResults int) []st
 // This is the minimum number of single-character edits (insertions, deletions, or substitutions)
 // required to change one string into the other.
 func LevenshteinDistance(a, b string) int {
+	// Optimization: ensure b is the shorter string to minimize row allocation.
+	if len(a) < len(b) {
+		a, b = b, a
+	}
+
 	aLen := len(a)
 	bLen := len(b)
 
 	// Early exit for empty strings
-	if a == "" {
-		return bLen
-	}
 	if b == "" {
 		return aLen
 	}
 
 	// Create a 2D matrix for dynamic programming
 	// We only need the previous row, so we can optimize space
-	previousRow := make([]int, bLen+1)
-	currentRow := make([]int, bLen+1)
+	var previousRow, currentRow []int
+
+	// Optimization: use a stack-allocated buffer for small strings to avoid heap allocation.
+	var buffer [128]int
+	if bLen+1 <= 64 {
+		previousRow = buffer[:bLen+1]
+		currentRow = buffer[64 : 64+bLen+1]
+	} else {
+		previousRow = make([]int, bLen+1)
+		currentRow = make([]int, bLen+1)
+	}
 
 	// Initialize the first row (distance from empty string)
 	for i := 0; i <= bLen; i++ {
