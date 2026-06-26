@@ -13,6 +13,17 @@
     },
     "codespaces": {
       "repositories": {
+        "T-ahamed2/gh-aw": {
+          "permissions": {
+            "actions": "write",
+            "checks": "write",
+            "contents": "write",
+            "discussions": "read",
+            "issues": "read",
+            "pull-requests": "write",
+            "workflows": "write"
+          }
+        },
         "github/gh-aw": {
           "permissions": {
             "actions": "write",
