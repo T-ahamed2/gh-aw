@@ -287,34 +287,35 @@ func fetchRemoteActionYAML(repo, subdir, ref string) (*actionYAMLFile, error) {
 		apiPath := fmt.Sprintf("/repos/%s/contents/%s?ref=%s", repo, contentPath, ref)
 		safeOutputActionsLog.Printf("Fetching action YAML from: %s", apiPath)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		cmd := ExecGHContext(ctx, "api", apiPath, "--jq", ".content")
-		output, err := cmd.Output()
-		cancel()
-		if err != nil {
-			safeOutputActionsLog.Printf("Failed to fetch %s from %s@%s: %v", filename, repo, ref, err)
-			continue
-		}
-
-		// GitHub API returns base64-encoded content with embedded newlines (line-wrapping every ~76 chars).
-		// The `gh api --jq .content` output is a raw string value (no surrounding quotes).
-		// We strip all whitespace (newlines and spaces) from the base64 string before decoding.
-		b64Content := strings.Map(func(r rune) rune {
-			if r == '\n' || r == '\r' || r == ' ' {
-				return -1 // remove character
+		// Wrap in an anonymous function to ensure cancel() is called at the end of each iteration.
+		actionYAML, err := func() (*actionYAMLFile, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			cmd := ExecGHContext(ctx, "api", apiPath, "--jq", ".content")
+			output, err := cmd.Output()
+			if err != nil {
+				return nil, err
 			}
-			return r
-		}, strings.TrimSpace(string(output)))
-		decoded, decErr := base64.StdEncoding.DecodeString(b64Content)
-		if decErr != nil {
-			safeOutputActionsLog.Printf("Failed to decode content for %s: %v", contentPath, decErr)
-			continue
-		}
 
-		actionYAML, parseErr := parseActionYAMLContent(decoded)
-		if parseErr != nil {
-			safeOutputActionsLog.Printf("Failed to parse %s: %v", contentPath, parseErr)
+			// GitHub API returns base64-encoded content with embedded newlines (line-wrapping every ~76 chars).
+			// The `gh api --jq .content` output is a raw string value (no surrounding quotes).
+			// We strip all whitespace (newlines and spaces) from the base64 string before decoding.
+			b64Content := strings.Map(func(r rune) rune {
+				if r == '\n' || r == '\r' || r == ' ' {
+					return -1 // remove character
+				}
+				return r
+			}, strings.TrimSpace(string(output)))
+			decoded, decErr := base64.StdEncoding.DecodeString(b64Content)
+			if decErr != nil {
+				return nil, fmt.Errorf("failed to decode base64 content: %w", decErr)
+			}
+
+			return parseActionYAMLContent(decoded)
+		}()
+
+		if err != nil {
+			safeOutputActionsLog.Printf("Failed to fetch/parse %s from %s@%s: %v", filename, repo, ref, err)
 			continue
 		}
 
