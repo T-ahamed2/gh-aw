@@ -10,7 +10,16 @@ import (
 
 var sanitizeLog = logger.New("stringutil:sanitize")
 
-var multipleHyphens = regexp.MustCompile(`-+`)
+var (
+	multipleHyphens = regexp.MustCompile(`-+`)
+
+	// Pre-compiled regex variants for SanitizeName to avoid expensive recompilation.
+	// These cover all possible combinations of preserved special characters (currently '.' and '_').
+	reSanitizeDefault        = regexp.MustCompile(`[^a-z0-9-]+`)
+	reSanitizeWithDot        = regexp.MustCompile(`[^a-z0-9-.]+`)
+	reSanitizeWithUnderscore = regexp.MustCompile(`[^a-z0-9-_]+`)
+	reSanitizeWithBoth       = regexp.MustCompile(`[^a-z0-9-._]+`)
+)
 
 // Regex patterns for detecting potential secret key names
 var (
@@ -124,23 +133,40 @@ func normalizeSanitizeSeparators(result string, opts *SanitizeOptions) string {
 }
 
 // buildSanitizePreservePattern builds a regex character class of allowed characters.
+// It returns a deterministic string for a limited set of supported special characters ('.' and '_').
 func buildSanitizePreservePattern(opts *SanitizeOptions) string {
-	var preserveChars strings.Builder
-	preserveChars.WriteString("a-z0-9-") // Always preserve alphanumeric and hyphens
-	for _, char := range opts.PreserveSpecialChars {
-		switch char {
-		case '.', '_':
-			preserveChars.WriteRune(char)
-		}
+	hasDot := slices.Contains(opts.PreserveSpecialChars, '.')
+	hasUnderscore := slices.Contains(opts.PreserveSpecialChars, '_')
+
+	if hasDot && hasUnderscore {
+		return "a-z0-9-._"
 	}
-	return preserveChars.String()
+	if hasDot {
+		return "a-z0-9-."
+	}
+	if hasUnderscore {
+		return "a-z0-9-_"
+	}
+	return "a-z0-9-"
 }
 
 // applySanitizePattern removes or replaces characters not in the allowed set.
 // When the caller has requested preservation of special chars, unwanted chars are
 // replaced with hyphens; otherwise they are removed entirely.
+// This function uses pre-compiled regex variants for performance.
 func applySanitizePattern(result, allowedChars string, preserveSpecialChars bool) string {
-	pattern := regexp.MustCompile(`[^` + allowedChars + `]+`)
+	var pattern *regexp.Regexp
+	switch allowedChars {
+	case "a-z0-9-.":
+		pattern = reSanitizeWithDot
+	case "a-z0-9-_":
+		pattern = reSanitizeWithUnderscore
+	case "a-z0-9-._":
+		pattern = reSanitizeWithBoth
+	default:
+		pattern = reSanitizeDefault
+	}
+
 	if preserveSpecialChars {
 		return pattern.ReplaceAllString(result, "-")
 	}
