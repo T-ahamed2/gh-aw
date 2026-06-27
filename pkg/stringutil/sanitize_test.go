@@ -82,6 +82,37 @@ func TestSanitizeErrorMessage(t *testing.T) {
 	}
 }
 
+func BenchmarkSanitizeName(b *testing.B) {
+	input := "My.Workflow_Name@123"
+
+	b.Run("Default", func(b *testing.B) {
+		for b.Loop() {
+			SanitizeName(input, nil)
+		}
+	})
+
+	b.Run("PreserveDot", func(b *testing.B) {
+		opts := &SanitizeOptions{PreserveSpecialChars: []rune{'.'}}
+		for b.Loop() {
+			SanitizeName(input, opts)
+		}
+	})
+
+	b.Run("PreserveUnderscore", func(b *testing.B) {
+		opts := &SanitizeOptions{PreserveSpecialChars: []rune{'_'}}
+		for b.Loop() {
+			SanitizeName(input, opts)
+		}
+	})
+
+	b.Run("PreserveBoth", func(b *testing.B) {
+		opts := &SanitizeOptions{PreserveSpecialChars: []rune{'.', '_'}}
+		for b.Loop() {
+			SanitizeName(input, opts)
+		}
+	})
+}
+
 func BenchmarkSanitizeErrorMessage(b *testing.B) {
 	message := "Failed to use API_TOKEN and DATABASE_PASSWORD with GitHubToken"
 	for b.Loop() {
