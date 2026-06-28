@@ -123,6 +123,14 @@ func normalizeSanitizeSeparators(result string, opts *SanitizeOptions) string {
 	return result
 }
 
+// commonSanitizePatterns pre-compiles frequently used sanitization regexes.
+var commonSanitizePatterns = map[string]*regexp.Regexp{
+	"a-z0-9-":   regexp.MustCompile(`[^a-z0-9-]+`),
+	"a-z0-9-.":  regexp.MustCompile(`[^a-z0-9-.]+`),
+	"a-z0-9-_":  regexp.MustCompile(`[^a-z0-9-_]+`),
+	"a-z0-9-._": regexp.MustCompile(`[^a-z0-9-._]+`),
+}
+
 // buildSanitizePreservePattern builds a regex character class of allowed characters.
 func buildSanitizePreservePattern(opts *SanitizeOptions) string {
 	var preserveChars strings.Builder
@@ -140,7 +148,13 @@ func buildSanitizePreservePattern(opts *SanitizeOptions) string {
 // When the caller has requested preservation of special chars, unwanted chars are
 // replaced with hyphens; otherwise they are removed entirely.
 func applySanitizePattern(result, allowedChars string, preserveSpecialChars bool) string {
-	pattern := regexp.MustCompile(`[^` + allowedChars + `]+`)
+	var pattern *regexp.Regexp
+	if p, ok := commonSanitizePatterns[allowedChars]; ok {
+		pattern = p
+	} else {
+		pattern = regexp.MustCompile(`[^` + allowedChars + `]+`)
+	}
+
 	if preserveSpecialChars {
 		return pattern.ReplaceAllString(result, "-")
 	}
@@ -206,7 +220,7 @@ func SanitizeIdentifierName(name string, extraAllowed func(rune) bool) string {
 	}, name)
 
 	// Ensure it doesn't start with a number
-	if len(result) > 0 && result[0] >= '0' && result[0] <= '9' {
+	if result != "" && result[0] >= '0' && result[0] <= '9' {
 		result = "_" + result
 	}
 
