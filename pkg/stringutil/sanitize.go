@@ -14,9 +14,9 @@ var multipleHyphens = regexp.MustCompile(`-+`)
 
 var (
 	sanitizePreserveAlphanumericDash = regexp.MustCompile(`[^a-z0-9-]+`)
-	sanitizePreserveDot              = regexp.MustCompile(`[^a-z0-9-.]+`)
-	sanitizePreserveUnderscore       = regexp.MustCompile(`[^a-z0-9-_]+`)
-	sanitizePreserveDotUnderscore    = regexp.MustCompile(`[^a-z0-9-._]+`)
+	sanitizePreserveDot              = regexp.MustCompile(`[^a-z0-9.-]+`)
+	sanitizePreserveUnderscore       = regexp.MustCompile(`[^a-z0-9_-]+`)
+	sanitizePreserveDotUnderscore    = regexp.MustCompile(`[^a-z0-9._-]+`)
 
 	separatorReplacer = strings.NewReplacer(
 		":", "-",
