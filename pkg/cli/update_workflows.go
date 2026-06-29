@@ -304,7 +304,9 @@ func fetchPublicGitHubAPI(ctx context.Context, endpoint string) ([]byte, error) 
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := http.DefaultClient.Do(req)
+	// Use a client with a timeout to prevent indefinite hangs.
+	client := &http.Client{Timeout: constants.DefaultHTTPClientTimeout}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
