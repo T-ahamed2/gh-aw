@@ -12,6 +12,27 @@ var sanitizeLog = logger.New("stringutil:sanitize")
 
 var multipleHyphens = regexp.MustCompile(`-+`)
 
+var (
+	sanitizePreserveAlphanumericDash = regexp.MustCompile(`[^a-z0-9-]+`)
+	sanitizePreserveDot              = regexp.MustCompile(`[^a-z0-9.-]+`)
+	sanitizePreserveUnderscore       = regexp.MustCompile(`[^a-z0-9_-]+`)
+	sanitizePreserveDotUnderscore    = regexp.MustCompile(`[^a-z0-9._-]+`)
+
+	separatorReplacer = strings.NewReplacer(
+		":", "-",
+		"\\", "-",
+		"/", "-",
+		" ", "-",
+	)
+	separatorReplacerWithUnderscore = strings.NewReplacer(
+		":", "-",
+		"\\", "-",
+		"/", "-",
+		" ", "-",
+		"_", "-",
+	)
+)
+
 // Regex patterns for detecting potential secret key names
 var (
 	// Match uppercase snake_case identifiers that look like secret names (e.g., MY_SECRET_KEY, GITHUB_TOKEN, API_KEY)
@@ -75,7 +96,7 @@ func SanitizeName(name string, opts *SanitizeOptions) string {
 	}
 
 	result := normalizeSanitizeSeparators(strings.ToLower(name), opts)
-	result = applySanitizePattern(result, buildSanitizePreservePattern(opts), len(opts.PreserveSpecialChars) > 0)
+	result = applySanitizePattern(result, opts)
 
 	// Consolidate multiple consecutive hyphens into a single hyphen
 	result = multipleHyphens.ReplaceAllString(result, "-")
@@ -113,35 +134,32 @@ func logSanitizeInput(name string, opts *SanitizeOptions) {
 // normalizeSanitizeSeparators converts common separators to hyphens and optionally
 // converts underscores when they are not in the preserve list.
 func normalizeSanitizeSeparators(result string, opts *SanitizeOptions) string {
-	result = strings.ReplaceAll(result, ":", "-")
-	result = strings.ReplaceAll(result, "\\", "-")
-	result = strings.ReplaceAll(result, "/", "-")
-	result = strings.ReplaceAll(result, " ", "-")
-	if !slices.Contains(opts.PreserveSpecialChars, '_') {
-		result = strings.ReplaceAll(result, "_", "-")
+	if slices.Contains(opts.PreserveSpecialChars, '_') {
+		return separatorReplacer.Replace(result)
 	}
-	return result
-}
-
-// buildSanitizePreservePattern builds a regex character class of allowed characters.
-func buildSanitizePreservePattern(opts *SanitizeOptions) string {
-	var preserveChars strings.Builder
-	preserveChars.WriteString("a-z0-9-") // Always preserve alphanumeric and hyphens
-	for _, char := range opts.PreserveSpecialChars {
-		switch char {
-		case '.', '_':
-			preserveChars.WriteRune(char)
-		}
-	}
-	return preserveChars.String()
+	return separatorReplacerWithUnderscore.Replace(result)
 }
 
 // applySanitizePattern removes or replaces characters not in the allowed set.
 // When the caller has requested preservation of special chars, unwanted chars are
 // replaced with hyphens; otherwise they are removed entirely.
-func applySanitizePattern(result, allowedChars string, preserveSpecialChars bool) string {
-	pattern := regexp.MustCompile(`[^` + allowedChars + `]+`)
-	if preserveSpecialChars {
+func applySanitizePattern(result string, opts *SanitizeOptions) string {
+	var pattern *regexp.Regexp
+	hasDot := slices.Contains(opts.PreserveSpecialChars, '.')
+	hasUnderscore := slices.Contains(opts.PreserveSpecialChars, '_')
+
+	switch {
+	case hasDot && hasUnderscore:
+		pattern = sanitizePreserveDotUnderscore
+	case hasDot:
+		pattern = sanitizePreserveDot
+	case hasUnderscore:
+		pattern = sanitizePreserveUnderscore
+	default:
+		pattern = sanitizePreserveAlphanumericDash
+	}
+
+	if len(opts.PreserveSpecialChars) > 0 {
 		return pattern.ReplaceAllString(result, "-")
 	}
 	return pattern.ReplaceAllString(result, "")
@@ -206,7 +224,7 @@ func SanitizeIdentifierName(name string, extraAllowed func(rune) bool) string {
 	}, name)
 
 	// Ensure it doesn't start with a number
-	if len(result) > 0 && result[0] >= '0' && result[0] <= '9' {
+	if result != "" && result[0] >= '0' && result[0] <= '9' {
 		result = "_" + result
 	}
 

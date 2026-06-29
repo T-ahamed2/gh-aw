@@ -1,0 +1,3 @@
+## 2025-05-14 - String and Fuzzy Matching Optimizations
+**Learning:** Stack allocation for small buffers (e.g., in Levenshtein distance) significantly reduces heap allocations and GC pressure. Pre-compiling regex patterns and using `strings.Replacer` for simple character substitutions is much faster than repeated `regexp.MustCompile` or multiple `strings.ReplaceAll` calls. Early exit length checks in fuzzy matching can skip expensive O(N*M) calculations.
+**Action:** Always prefer `strings.Replacer` for multiple static string replacements. Use stack-allocated buffers for small, temporary slices. Implement early exit logic in expensive algorithms based on simple invariants (like length difference).
