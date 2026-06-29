@@ -36,6 +36,16 @@ func FindClosestMatches(target string, candidates []string, maxResults int) []st
 			continue
 		}
 
+		// Optimization: Early exit if byte length difference exceeds maxDistance
+		// Levenshtein distance is at least the difference in lengths.
+		diff := len(targetLower) - len(candidateLower)
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > maxDistance {
+			continue
+		}
+
 		distance := LevenshteinDistance(targetLower, candidateLower)
 
 		// Only include if distance is within acceptable range
@@ -76,21 +86,29 @@ func FindClosestMatches(target string, candidates []string, maxResults int) []st
 // This is the minimum number of single-character edits (insertions, deletions, or substitutions)
 // required to change one string into the other.
 func LevenshteinDistance(a, b string) int {
+	// Optimization: Ensure b is the shorter string to minimize row allocation
+	if len(a) < len(b) {
+		a, b = b, a
+	}
+
 	aLen := len(a)
 	bLen := len(b)
 
 	// Early exit for empty strings
-	if a == "" {
-		return bLen
-	}
 	if b == "" {
 		return aLen
 	}
 
-	// Create a 2D matrix for dynamic programming
-	// We only need the previous row, so we can optimize space
-	previousRow := make([]int, bLen+1)
-	currentRow := make([]int, bLen+1)
+	// Optimization: Use stack-allocated buffer for small strings to avoid heap allocation
+	var buf [128]int
+	var previousRow, currentRow []int
+	if (bLen+1)*2 <= len(buf) {
+		previousRow = buf[:bLen+1]
+		currentRow = buf[bLen+1 : (bLen+1)*2]
+	} else {
+		previousRow = make([]int, bLen+1)
+		currentRow = make([]int, bLen+1)
+	}
 
 	// Initialize the first row (distance from empty string)
 	for i := 0; i <= bLen; i++ {
