@@ -9,6 +9,8 @@ import (
 
 var identifiersLog = logger.New("stringutil:identifiers")
 
+var safeOutputReplacer = strings.NewReplacer("-", "_", ".", "_")
+
 // NormalizeWorkflowName removes .md and .lock.yml extensions from workflow names.
 // This is used to standardize workflow identifiers regardless of the file format.
 //
@@ -60,9 +62,7 @@ func NormalizeWorkflowName(name string) string {
 //	NormalizeSafeOutputIdentifier("update-pr")             // returns "update_pr"
 //	NormalizeSafeOutputIdentifier("executor-workflow.agent") // returns "executor_workflow_agent"
 func NormalizeSafeOutputIdentifier(identifier string) string {
-	result := strings.ReplaceAll(identifier, "-", "_")
-	result = strings.ReplaceAll(result, ".", "_")
-	return result
+	return safeOutputReplacer.Replace(identifier)
 }
 
 // MarkdownToLockFile converts a workflow markdown file path to its compiled lock file path.

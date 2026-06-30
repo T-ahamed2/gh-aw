@@ -12,6 +12,21 @@ var sanitizeLog = logger.New("stringutil:sanitize")
 
 var multipleHyphens = regexp.MustCompile(`-+`)
 
+// Common regex patterns for allowed character classes used in sanitization.
+// Hyphens are placed at the end of character classes to prevent incorrect range interpretation.
+var (
+	reAlphaNumHyphen       = regexp.MustCompile(`[^a-z0-9-]+`)
+	reAlphaNumHyphenDot    = regexp.MustCompile(`[^a-z0-9.-]+`)
+	reAlphaNumHyphenUnd    = regexp.MustCompile(`[^a-z0-9_-]+`)
+	reAlphaNumHyphenDotUnd = regexp.MustCompile(`[^a-z0-9._-]+`)
+)
+
+// Common separator replacers for sanitization
+var (
+	sanitizeReplacerWithUnderscore = strings.NewReplacer(":", "-", "\\", "-", "/", "-", " ", "-")
+	sanitizeReplacerNoUnderscore   = strings.NewReplacer(":", "-", "\\", "-", "/", "-", " ", "-", "_", "-")
+)
+
 // Regex patterns for detecting potential secret key names
 var (
 	// Match uppercase snake_case identifiers that look like secret names (e.g., MY_SECRET_KEY, GITHUB_TOKEN, API_KEY)
@@ -75,7 +90,8 @@ func SanitizeName(name string, opts *SanitizeOptions) string {
 	}
 
 	result := normalizeSanitizeSeparators(strings.ToLower(name), opts)
-	result = applySanitizePattern(result, buildSanitizePreservePattern(opts), len(opts.PreserveSpecialChars) > 0)
+	preserveSpecialChars := len(opts.PreserveSpecialChars) > 0
+	result = applySanitizePattern(result, buildSanitizePreservePattern(opts), preserveSpecialChars)
 
 	// Consolidate multiple consecutive hyphens into a single hyphen
 	result = multipleHyphens.ReplaceAllString(result, "-")
@@ -113,14 +129,10 @@ func logSanitizeInput(name string, opts *SanitizeOptions) {
 // normalizeSanitizeSeparators converts common separators to hyphens and optionally
 // converts underscores when they are not in the preserve list.
 func normalizeSanitizeSeparators(result string, opts *SanitizeOptions) string {
-	result = strings.ReplaceAll(result, ":", "-")
-	result = strings.ReplaceAll(result, "\\", "-")
-	result = strings.ReplaceAll(result, "/", "-")
-	result = strings.ReplaceAll(result, " ", "-")
-	if !slices.Contains(opts.PreserveSpecialChars, '_') {
-		result = strings.ReplaceAll(result, "_", "-")
+	if slices.Contains(opts.PreserveSpecialChars, '_') {
+		return sanitizeReplacerWithUnderscore.Replace(result)
 	}
-	return result
+	return sanitizeReplacerNoUnderscore.Replace(result)
 }
 
 // buildSanitizePreservePattern builds a regex character class of allowed characters.
@@ -140,7 +152,20 @@ func buildSanitizePreservePattern(opts *SanitizeOptions) string {
 // When the caller has requested preservation of special chars, unwanted chars are
 // replaced with hyphens; otherwise they are removed entirely.
 func applySanitizePattern(result, allowedChars string, preserveSpecialChars bool) string {
-	pattern := regexp.MustCompile(`[^` + allowedChars + `]+`)
+	var pattern *regexp.Regexp
+	switch allowedChars {
+	case "a-z0-9-":
+		pattern = reAlphaNumHyphen
+	case "a-z0-9-.":
+		pattern = reAlphaNumHyphenDot
+	case "a-z0-9-_":
+		pattern = reAlphaNumHyphenUnd
+	case "a-z0-9-._":
+		pattern = reAlphaNumHyphenDotUnd
+	default:
+		pattern = regexp.MustCompile(`[^` + allowedChars + `]+`)
+	}
+
 	if preserveSpecialChars {
 		return pattern.ReplaceAllString(result, "-")
 	}
@@ -206,7 +231,7 @@ func SanitizeIdentifierName(name string, extraAllowed func(rune) bool) string {
 	}, name)
 
 	// Ensure it doesn't start with a number
-	if len(result) > 0 && result[0] >= '0' && result[0] <= '9' {
+	if result != "" && result[0] >= '0' && result[0] <= '9' {
 		result = "_" + result
 	}
 
@@ -301,8 +326,11 @@ func SanitizeForFilename(slug string) string {
 		return "clone-mode"
 	}
 	var sb strings.Builder
-	for _, r := range strings.ReplaceAll(slug, "/", "-") {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+	sb.Grow(len(slug))
+	for _, r := range slug {
+		if r == '/' {
+			sb.WriteRune('-')
+		} else if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
 			sb.WriteRune(r)
 		} else {
 			sb.WriteRune('-')
