@@ -90,7 +90,7 @@ func SanitizeName(name string, opts *SanitizeOptions) string {
 	}
 
 	result := normalizeSanitizeSeparators(strings.ToLower(name), opts)
-	preserveSpecialChars := opts != nil && opts.PreserveSpecialChars != nil
+	preserveSpecialChars := len(opts.PreserveSpecialChars) > 0
 	result = applySanitizePattern(result, buildSanitizePreservePattern(opts), preserveSpecialChars)
 
 	// Consolidate multiple consecutive hyphens into a single hyphen
