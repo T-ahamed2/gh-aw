@@ -82,3 +82,25 @@ func TestListContentsRecursivelyWithDepth_MaxDepthGuard(t *testing.T) {
 		t.Fatalf("expected depth limit error, got %q", err)
 	}
 }
+
+func TestGitArgumentInjectionProtection(t *testing.T) {
+	// This test verifies that we use "--" to prevent argument injection in git commands.
+	// We use a ref that looks like a flag (-v).
+	// If it was treated as a flag, git might output its version and exit successfully (depending on command).
+	// If it's correctly treated as a ref, it should fail because the repo/ref doesn't exist.
+
+	t.Run("resolveRefToSHAViaGit with hyphen ref", func(t *testing.T) {
+		// resolveRefToSHAViaGit calls 'git ls-remote -- <repo> <ref>'
+		_, err := resolveRefToSHAViaGit("owner", "repo", "-v", "github.com")
+		if err == nil {
+			t.Fatal("expected error for non-existent repo, but got success (potential flag injection)")
+		}
+
+		// If flag injection occurred, 'git ls-remote -v' might succeed or give a different error
+		// than 'git ls-remote -- <repoURL> -v'.
+		// With '--', git should complain about the repository or the ref.
+		if strings.Contains(err.Error(), "unknown switch") {
+			t.Fatalf("detected flag injection: %v", err)
+		}
+	})
+}
