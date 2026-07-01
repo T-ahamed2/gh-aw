@@ -195,7 +195,7 @@ func cloneTrialHostRepository(repoSlug string, verbose bool) (string, error) {
 	repoURL := fmt.Sprintf("https://github.com/%s.git", repoSlug)
 	trialRepoLog.Printf("Cloning repository from URL to tempDir: %s", tempDir)
 
-	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", repoSlug), "clone", repoURL, tempDir)
+	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", repoSlug), "clone", "--", repoURL, tempDir)
 	if err != nil {
 		trialRepoLog.Printf("Failed to clone host repository %s: %v", repoSlug, err)
 		return "", fmt.Errorf("failed to clone host repository %s: %w (output: %s)", repoURL, err, string(output))
@@ -551,7 +551,7 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 	// Clone the source repository
 	cloneURL := fmt.Sprintf("https://github.com/%s.git", cloneRepoSlug)
 
-	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", cloneRepoSlug), "clone", cloneURL, tempCloneDir)
+	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", cloneRepoSlug), "clone", "--", cloneURL, tempCloneDir)
 	if err != nil {
 		return fmt.Errorf("failed to clone source repository %s: %w (output: %s)", cloneURL, err, string(output))
 	}
@@ -563,7 +563,7 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 
 	// If a version/tag/SHA is specified, checkout that ref
 	if cloneRepoVersion != "" {
-		checkoutCmd := exec.Command("git", "checkout", cloneRepoVersion)
+		checkoutCmd := exec.Command("git", "checkout", cloneRepoVersion, "--")
 		if output, err := checkoutCmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to checkout ref '%s': %w (output: %s)", cloneRepoVersion, err, string(output))
 		}
