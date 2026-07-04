@@ -3,6 +3,7 @@
 package parser
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -81,4 +82,48 @@ func TestListContentsRecursivelyWithDepth_MaxDepthGuard(t *testing.T) {
 	if !strings.Contains(err.Error(), "maximum skill directory recursion depth exceeded") {
 		t.Fatalf("expected depth limit error, got %q", err)
 	}
+}
+
+func TestGitArgumentInjectionProtection(t *testing.T) {
+	t.Run("resolveRefToSHAViaGit rejects hyphen ref", func(t *testing.T) {
+		_, err := resolveRefToSHAViaGit("owner", "repo", "-v", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected hyphen ref error, got %v", err)
+		}
+	})
+
+	t.Run("resolveRefToSHA rejects hyphen ref", func(t *testing.T) {
+		_, err := resolveRefToSHA("owner", "repo", "-v", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected hyphen ref error, got %v", err)
+		}
+	})
+
+	t.Run("downloadFileViaGit rejects hyphen ref", func(t *testing.T) {
+		_, err := downloadFileViaGit(context.Background(), "owner", "repo", "path", "-v", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected hyphen ref error, got %v", err)
+		}
+	})
+
+	t.Run("downloadFileViaGit rejects hyphen path", func(t *testing.T) {
+		_, err := downloadFileViaGit(context.Background(), "owner", "repo", "-v", "ref", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected hyphen path error, got %v", err)
+		}
+	})
+
+	t.Run("downloadFileViaGitClone rejects hyphen ref", func(t *testing.T) {
+		_, err := downloadFileViaGitClone("owner", "repo", "path", "-v", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected hyphen ref error, got %v", err)
+		}
+	})
+
+	t.Run("downloadFileViaGitClone rejects hyphen path", func(t *testing.T) {
+		_, err := downloadFileViaGitClone("owner", "repo", "-v", "ref", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected hyphen path error, got %v", err)
+		}
+	})
 }
