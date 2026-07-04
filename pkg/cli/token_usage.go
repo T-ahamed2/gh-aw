@@ -616,6 +616,7 @@ func sumAICFromUsageJSONLFiles(filePaths []string) (float64, bool, error) {
 		if err != nil {
 			return 0, false, fmt.Errorf("failed to open usage JSONL file %s: %w", filePath, err)
 		}
+		defer file.Close()
 
 		scanner := bufio.NewScanner(file)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
