@@ -349,7 +349,7 @@ func readLocalActionYAML(localPath, markdownPath string) (*actionYAMLFile, error
 func parseActionYAMLContent(content []byte) (*actionYAMLFile, error) {
 	var parsed actionYAMLFile
 	if err := yaml.Unmarshal(content, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse action YAML: %w. Example: check for YAML syntax errors", err)
+		return nil, NewValidationError("action.yml", "YAML content", "failed to parse action YAML", "ensure the action.yml file has valid YAML syntax. Example: check for indentation or special character errors")
 	}
 	return &parsed, nil
 }

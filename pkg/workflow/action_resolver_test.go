@@ -89,7 +89,7 @@ func TestActionResolverFailedResolutionCache(t *testing.T) {
 
 	// Verify the failed resolution was tracked
 	cacheKey := formatActionCacheKey(repo, version)
-	if !resolver.failedResolutions[cacheKey] {
+	if _, failed := resolver.failedResolutions[cacheKey]; !failed {
 		t.Errorf("Expected failed resolution to be tracked for %s", cacheKey)
 	}
 	if !resolver.GetUsedCacheKeys()[cacheKey] {
