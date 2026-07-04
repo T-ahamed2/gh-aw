@@ -63,7 +63,7 @@ func ensureTrialRepository(repoSlug string, cloneRepoSlug string, forceDeleteHos
 				fmt.Fprintln(os.Stderr, console.FormatInfoMessage("[DRY RUN] Would delete repository: "+repoSlug))
 			} else {
 				if deleteOutput, deleteErr := workflow.RunGHCombined("Deleting repository...", "repo", "delete", repoSlug, "--yes"); deleteErr != nil {
-					return fmt.Errorf("failed to force delete existing host repository %s: %w (output: %s)", repoSlug, deleteErr, string(deleteOutput))
+					return fmt.Errorf("force deletion of existing host repository %s requires success, but encountered error: %w (output: %s). Check your repository permissions", repoSlug, deleteErr, string(deleteOutput))
 				}
 
 				fmt.Fprintln(os.Stderr, console.FormatSuccessMessage("Force deleted existing host repository: "+repoSlug))
@@ -120,7 +120,7 @@ func ensureTrialRepository(repoSlug string, cloneRepoSlug string, forceDeleteHos
 			fmt.Fprintln(os.Stderr, console.FormatSuccessMessage("Using existing host repository: https://github.com/"+repoSlug))
 			return nil
 		}
-		return fmt.Errorf("failed to create host repository: %w (output: %s)", err, string(output))
+		return fmt.Errorf("host repository creation requires success, but encountered error: %w (output: %s). Ensure your token has 'repo' scope and the name is valid", err, string(output))
 	}
 
 	// Show host repository creation message with URL
@@ -169,7 +169,7 @@ func cleanupTrialRepository(repoSlug string, verbose bool) error {
 
 	if err != nil {
 		trialRepoLog.Printf("Failed to delete trial repository %s: %v", repoSlug, err)
-		return fmt.Errorf("failed to delete host repository: %w (output: %s)", err, string(output))
+		return fmt.Errorf("host repository deletion requires success, but encountered error: %w (output: %s). Should verify repository existence and permissions", err, string(output))
 	}
 
 	trialRepoLog.Printf("Successfully deleted trial repository: %s", repoSlug)
@@ -188,7 +188,7 @@ func cloneTrialHostRepository(repoSlug string, verbose bool) (string, error) {
 	// Validate the temporary directory path
 	tempDir, err := fileutil.ValidateAbsolutePath(tempDir)
 	if err != nil {
-		return "", fmt.Errorf("invalid temporary directory path: %w", err)
+		return "", fmt.Errorf("temporary directory path requires a valid absolute path, but %s is invalid: %w. Example: /tmp/repo", tempDir, err)
 	}
 
 	// Clone the repository using the full slug
@@ -198,7 +198,7 @@ func cloneTrialHostRepository(repoSlug string, verbose bool) (string, error) {
 	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", repoSlug), "clone", "--", repoURL, tempDir)
 	if err != nil {
 		trialRepoLog.Printf("Failed to clone host repository %s: %v", repoSlug, err)
-		return "", fmt.Errorf("failed to clone host repository %s: %w (output: %s)", repoURL, err, string(output))
+		return "", fmt.Errorf("cloning host repository %s requires success, but encountered error: %w (output: %s). Example: check your network connection and token permissions", repoURL, err, string(output))
 	}
 
 	trialRepoLog.Printf("Successfully cloned trial repository to: %s", tempDir)
@@ -212,12 +212,12 @@ func installWorkflowInTrialMode(ctx context.Context, tempDir string, parsedSpec 
 	// Change to temp directory
 	originalDir, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("failed to get current directory: %w", err)
+		return fmt.Errorf("accessing current working directory requires OS permissions, but encountered error: %w. Should ensure the current path is readable", err)
 	}
 	defer os.Chdir(originalDir)
 
 	if err := os.Chdir(tempDir); err != nil {
-		return fmt.Errorf("failed to change to temp directory: %w", err)
+		return fmt.Errorf("changing to temporary directory requires %s to exist, but encountered error: %w", tempDir, err)
 	}
 
 	// Fetch workflow content - handle local workflows specially since they need
@@ -230,7 +230,7 @@ func installWorkflowInTrialMode(ctx context.Context, tempDir string, parsedSpec 
 		// Use a closure to ensure directory is restored even on error
 		fetched, err = func() (*FetchedWorkflow, error) {
 			if chErr := os.Chdir(originalDir); chErr != nil {
-				return nil, fmt.Errorf("failed to change to original directory for local fetch: %w", chErr)
+				return nil, fmt.Errorf("restoring working directory to %s requires success, but encountered error: %w. Should verify the directory still exists", originalDir, chErr)
 			}
 			// Always restore to tempDir when this closure exits
 			defer os.Chdir(tempDir)
@@ -249,7 +249,7 @@ func installWorkflowInTrialMode(ctx context.Context, tempDir string, parsedSpec 
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to fetch workflow: %w", err)
+		return fmt.Errorf("fetching workflow requires a valid source, but encountered error: %w. Should verify the workflow path and repository access", err)
 	}
 
 	content := fetched.Content
@@ -297,14 +297,14 @@ func installWorkflowInTrialMode(ctx context.Context, tempDir string, parsedSpec 
 	// Fetch and save all remote dependencies (includes, imports, dispatch workflows, resources)
 	if !fetched.IsLocal {
 		if err := fetchAllRemoteDependencies(ctx, string(content), parsedSpec, result.WorkflowsDir, opts.Verbose, true, nil); err != nil {
-			return fmt.Errorf("failed to fetch remote dependencies: %w", err)
+			return fmt.Errorf("fetching remote dependencies requires all referenced files to exist, but encountered error: %w. Should check for missing includes or imports", err)
 		}
 	}
 
 	// Modify the workflow for trial mode (skip in direct trial mode)
 	if !directTrialMode {
 		if err := modifyWorkflowForTrialMode(tempDir, parsedSpec.WorkflowName, logicalRepoSlug, opts.Verbose); err != nil {
-			return fmt.Errorf("failed to modify workflow for trial mode: %w", err)
+			return fmt.Errorf("modifying workflow for trial mode requires success, but encountered error: %w", err)
 		}
 	} else if opts.Verbose {
 		fmt.Fprintln(os.Stderr, console.FormatInfoMessage("Direct trial mode: Skipping trial mode modifications"))
@@ -326,17 +326,17 @@ func installWorkflowInTrialMode(ctx context.Context, tempDir string, parsedSpec 
 	}
 	workflowDataList, err := CompileWorkflows(ctx, config)
 	if err != nil {
-		return fmt.Errorf("failed to compile workflow: %w", err)
+		return fmt.Errorf("workflow compilation requires valid YAML and frontmatter, but encountered error: %w. Should check the workflow source for syntax errors", err)
 	}
 	if len(workflowDataList) != 1 {
-		return fmt.Errorf("expected one compiled workflow, got %d", len(workflowDataList))
+		return fmt.Errorf("compilation requires exactly one workflow result, but got %d. Check if the input contains multiple workflows", len(workflowDataList))
 	}
 	// Note: workflowData is used for validation; secrets are ensured before installWorkflowInTrialMode is called
 	_ = workflowDataList[0]
 
 	// Commit and push the changes
 	if err := commitAndPushWorkflow(tempDir, parsedSpec.WorkflowName, opts.Verbose); err != nil {
-		return fmt.Errorf("failed to commit and push workflow: %w", err)
+		return fmt.Errorf("pushing to host repository requires write access, but encountered error: %w. Should verify your GitHub token has 'repo' scope", err)
 	}
 
 	return nil
@@ -361,7 +361,7 @@ func writeWorkflowToTrialDir(tempDir string, workflowName string, content []byte
 		if findings := workflow.ScanMarkdownSecurity(string(content)); len(findings) > 0 {
 			fmt.Fprintln(os.Stderr, console.FormatErrorMessage("Security scan failed for workflow"))
 			fmt.Fprintln(os.Stderr, workflow.FormatSecurityFindings(findings, workflowName))
-			return nil, fmt.Errorf("workflow '%s' failed security scan: %d issue(s) detected", workflowName, len(findings))
+			return nil, fmt.Errorf("workflow '%s' requires passing security scan, but %d issue(s) were detected. Should resolve findings such as remote shell or suspicious commands", workflowName, len(findings))
 		}
 		if opts.Verbose {
 			fmt.Fprintln(os.Stderr, console.FormatSuccessMessage("Security scan passed"))
@@ -374,17 +374,17 @@ func writeWorkflowToTrialDir(tempDir string, workflowName string, content []byte
 	workflowsDir := filepath.Join(tempDir, constants.GetWorkflowDir())
 	workflowsDir, err := fileutil.ValidateAbsolutePath(workflowsDir)
 	if err != nil {
-		return nil, fmt.Errorf("invalid workflows directory path: %w", err)
+		return nil, fmt.Errorf("workflows directory path requires a valid absolute path, but %s is invalid: %w", workflowsDir, err)
 	}
 	if err := os.MkdirAll(workflowsDir, constants.DirPermPublic); err != nil {
-		return nil, fmt.Errorf("failed to create workflows directory: %w", err)
+		return nil, fmt.Errorf("creating workflows directory requires write permissions, but encountered error: %w. Should ensure %s is writable", err, workflowsDir)
 	}
 
 	// Construct the destination path
 	destPath := filepath.Join(workflowsDir, workflowName+".md")
 	destPath, err = fileutil.ValidateAbsolutePath(destPath)
 	if err != nil {
-		return nil, fmt.Errorf("invalid destination path: %w", err)
+		return nil, fmt.Errorf("destination path requires a valid absolute path, but %s is invalid: %w", destPath, err)
 	}
 
 	// Append text if provided
@@ -399,7 +399,7 @@ func writeWorkflowToTrialDir(tempDir string, workflowName string, content []byte
 
 	// Write the content to the destination
 	if err := os.WriteFile(destPath, content, constants.FilePermPublic); err != nil {
-		return nil, fmt.Errorf("failed to write workflow to destination: %w", err)
+		return nil, fmt.Errorf("writing workflow to destination requires success, but encountered error: %w. Should check disk space and permissions for %s", err, destPath)
 	}
 
 	return &trialWorkflowWriteResult{
@@ -421,12 +421,12 @@ func modifyWorkflowForTrialMode(tempDir, workflowName, logicalRepoSlug string, v
 	// Validate workflow path
 	workflowPath, err := fileutil.ValidateAbsolutePath(workflowPath)
 	if err != nil {
-		return fmt.Errorf("invalid workflow path: %w", err)
+		return fmt.Errorf("workflow path requires a valid absolute path, but %s is invalid: %w", workflowPath, err)
 	}
 
 	content, err := os.ReadFile(workflowPath)
 	if err != nil {
-		return fmt.Errorf("failed to read workflow file: %w", err)
+		return fmt.Errorf("reading workflow file requires it to exist at %s, but encountered error: %w. Should verify the path is correct", workflowPath, err)
 	}
 
 	// Replace repository references in the content only if logicalRepoSlug is not empty
@@ -464,7 +464,7 @@ func modifyWorkflowForTrialMode(tempDir, workflowName, logicalRepoSlug string, v
 
 	// Write the modified content back
 	if err := os.WriteFile(workflowPath, []byte(modifiedContent), constants.FilePermPublic); err != nil {
-		return fmt.Errorf("failed to write modified workflow: %w", err)
+		return fmt.Errorf("writing modified workflow requires success, but encountered error: %w. Should verify %s is writable", err, workflowPath)
 	}
 
 	if verbose {
@@ -482,7 +482,7 @@ func commitAndPushWorkflow(tempDir, workflowName string, verbose bool) error {
 	cmd := exec.Command("git", "add", "--", ".")
 	cmd.Dir = tempDir
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to add changes: %w (output: %s)", err, string(output))
+		return fmt.Errorf("git add requires success, but encountered error: %w (output: %s). Should verify the directory %s is a valid git repository", err, string(output), tempDir)
 	}
 
 	// Check if there are any changes to commit
@@ -490,7 +490,7 @@ func commitAndPushWorkflow(tempDir, workflowName string, verbose bool) error {
 	statusCmd.Dir = tempDir
 	statusOutput, err := statusCmd.Output()
 	if err != nil {
-		return fmt.Errorf("failed to check git status: %w", err)
+		return fmt.Errorf("checking git status requires a valid repository, but encountered error: %w. Should ensure %s is not corrupted", err, tempDir)
 	}
 
 	// If no changes, skip commit and push
@@ -507,7 +507,7 @@ func commitAndPushWorkflow(tempDir, workflowName string, verbose bool) error {
 	cmd = exec.Command("git", "commit", "-m", commitMsg)
 	cmd.Dir = tempDir
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to commit changes: %w (output: %s)", err, string(output))
+		return fmt.Errorf("git commit requires success, but encountered error: %w (output: %s). Should verify git user name and email are configured", err, string(output))
 	}
 
 	if verbose {
@@ -515,14 +515,14 @@ func commitAndPushWorkflow(tempDir, workflowName string, verbose bool) error {
 	}
 	cmd = exec.Command("git", "pull", "origin", "main")
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to pull latest changes: %w (output: %s)", err, string(output))
+		return fmt.Errorf("pulling latest changes requires network access, but encountered error: %w (output: %s). Should check your connection to origin", err, string(output))
 	}
 
 	// Push to main
 	cmd = exec.Command("git", "push", "origin", "main")
 	cmd.Dir = tempDir
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to push changes: %w (output: %s)", err, string(output))
+		return fmt.Errorf("pushing changes requires write access to origin, but encountered error: %w (output: %s). Should verify your GitHub token permissions", err, string(output))
 	}
 
 	fmt.Fprintln(os.Stderr, console.FormatSuccessMessage("Workflow and lock files committed and pushed to host repository"))
@@ -540,7 +540,7 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 	// Save the original working directory to restore it later
 	originalDir, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("failed to get current directory: %w", err)
+		return fmt.Errorf("accessing current directory requires success, but encountered error: %w. Should ensure the path is readable", err)
 	}
 	defer os.Chdir(originalDir)
 
@@ -553,22 +553,22 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 
 	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", cloneRepoSlug), "clone", "--", cloneURL, tempCloneDir)
 	if err != nil {
-		return fmt.Errorf("failed to clone source repository %s: %w (output: %s)", cloneURL, err, string(output))
+		return fmt.Errorf("cloning source repository %s requires success, but encountered error: %w (output: %s). Example: verify the repository exists and is accessible", cloneURL, err, string(output))
 	}
 
 	// Change to the cloned repository directory
 	if err := os.Chdir(tempCloneDir); err != nil {
-		return fmt.Errorf("failed to change to clone directory: %w", err)
+		return fmt.Errorf("changing to clone directory %s requires success, but encountered error: %w", tempCloneDir, err)
 	}
 
 	// If a version/tag/SHA is specified, checkout that ref
 	if cloneRepoVersion != "" {
 		if strings.HasPrefix(cloneRepoVersion, "-") {
-			return fmt.Errorf("invalid clone repository version: %q must not start with '-'", cloneRepoVersion)
+			return fmt.Errorf("repository version %q is invalid as it must not start with '-'. Expected a branch, tag, or commit SHA", cloneRepoVersion)
 		}
 		checkoutCmd := exec.Command("git", "checkout", cloneRepoVersion)
 		if output, err := checkoutCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to checkout ref '%s': %w (output: %s)", cloneRepoVersion, err, string(output))
+			return fmt.Errorf("checking out ref '%s' requires it to exist, but encountered error: %w (output: %s). Should verify the branch or tag name", cloneRepoVersion, err, string(output))
 		}
 	}
 
@@ -576,13 +576,13 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 	hostURL := fmt.Sprintf("https://github.com/%s.git", hostRepoSlug)
 	remoteCmd := exec.Command("git", "remote", "add", "host", hostURL)
 	if output, err := remoteCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to add host remote: %w (output: %s)", err, string(output))
+		return fmt.Errorf("adding host remote requires a valid URL %s, but encountered error: %w (output: %s)", hostURL, err, string(output))
 	}
 
 	// Force push the current branch to the host repository's main branch
 	pushCmd := exec.Command("git", "push", "--force", "host", "HEAD:main")
 	if output, err := pushCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to force push to host repository: %w (output: %s)", err, string(output))
+		return fmt.Errorf("force pushing to host repository requires write access, but encountered error: %w (output: %s). Should verify your GitHub token permissions", err, string(output))
 	}
 
 	if verbose {
