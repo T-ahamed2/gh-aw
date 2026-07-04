@@ -358,7 +358,7 @@ func writeWorkflowToTrialDir(tempDir string, workflowName string, content []byte
 	trialRepoLog.Printf("Writing workflow to trial dir: workflow=%s, content_size=%d bytes, securityScanDisabled=%v", workflowName, len(content), opts.DisableSecurityScanner)
 	// Security scan: reject workflows containing malicious or dangerous content
 	if !opts.DisableSecurityScanner {
-		if findings := workflow.ScanMarkdownSecurity(string(content)); len(findings) > 0 {
+		if findings := workflow.ScanMarkdownSecurity(string(content)); len(findings) != 0 {
 			fmt.Fprintln(os.Stderr, console.FormatErrorMessage("Security scan failed for workflow"))
 			fmt.Fprintln(os.Stderr, workflow.FormatSecurityFindings(findings, workflowName))
 			return nil, fmt.Errorf("workflow '%s' failed security scan: %d issue(s) detected", workflowName, len(findings))

@@ -70,7 +70,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp directory: %w", err)
+		return "", fmt.Errorf("temporary directory creation failed; check system permissions or disk space: %w", err)
 	}
 
 	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", "--", repoURL, tmpDir)
@@ -80,7 +80,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 			remoteLog.Printf("Failed to clean up temp directory %q: %v", tmpDir, cleanupErr)
 		}
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return "", fmt.Errorf("failed to clone repository for %s/%s@%s: %w", owner, repo, ref, err)
+		return "", fmt.Errorf("git clone failed for %s/%s@%s; ensure the repository exists and is accessible: %w", owner, repo, ref, err)
 	}
 
 	existingDir, found := func() (string, bool) {
@@ -261,7 +261,7 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if stripped, ok := strings.CutPrefix(filepath.ToSlash(filePath), "/"); ok {
 		if !strings.HasPrefix(stripped, constants.GithubDir) && !strings.HasPrefix(stripped, ".agents/") {
 			remoteLog.Printf("Security: Path not within .github or .agents: %s", filePath)
-			return "", fmt.Errorf("security: path %s must be within .github or .agents folder", filePath)
+			return "", fmt.Errorf("invalid path %s; local includes must be located within .github or .agents folder", filePath)
 		}
 	}
 	fullPath := filepath.Join(resolveBase, filePath)
@@ -271,7 +271,7 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if err != nil || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) || filepath.IsAbs(relativePath) {
 		allowedFolder := filepath.Base(normalizedSecurityBase)
 		remoteLog.Printf("Security: Path escapes allowed folder: %s (resolves to: %s)", filePath, relativePath)
-		return "", fmt.Errorf("security: path %s must be within %s folder (resolves to: %s)", filePath, allowedFolder, relativePath)
+		return "", fmt.Errorf("invalid path %s; local includes must be located within the %s folder (resolves to: %s)", filePath, allowedFolder, relativePath)
 	}
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
@@ -359,7 +359,7 @@ func downloadIncludeFromWorkflowSpec(spec string, cache *ImportCache) (string, e
 	remoteLog.Printf("Fetching file from GitHub: %s/%s/%s@%s", owner, repo, filePath, ref)
 	content, err := downloadFileFromGitHub(owner, repo, filePath, ref)
 	if err != nil {
-		return "", fmt.Errorf("failed to download include from %s: %w", spec, err)
+		return "", fmt.Errorf("include download failed for %s; check the workflowspec format and repository access: %w", spec, err)
 	}
 	remoteLog.Printf("Successfully downloaded file: size=%d bytes", len(content))
 
@@ -469,7 +469,7 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 		for _, prefix := range []string{"refs/heads/", "refs/tags/"} {
 			cmd = exec.Command("git", "ls-remote", "--", repoURL, prefix+ref)
 			output, err = cmd.Output()
-			if err == nil && len(output) > 0 {
+			if err == nil && string(output) != "" {
 				break
 			}
 		}
@@ -639,8 +639,8 @@ func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string
 
 	// git archive command: git archive --remote=<repo> <ref> <path>
 	// #nosec G204 -- repoURL, ref, and path are from workflow import configuration authored by the
-	// developer; exec.Command with separate args (not shell execution) prevents shell injection.
-	cmd := exec.Command("git", "archive", "--remote="+repoURL, ref, "--", path)
+	// developer; exec.CommandContext with separate args (not shell execution) prevents shell injection.
+	cmd := exec.CommandContext(ctx, "git", "archive", "--remote="+repoURL, ref, "--", path)
 	archiveOutput, err := cmd.Output()
 	if err != nil {
 		// If git archive fails, try with git clone + git show as a fallback
@@ -691,8 +691,8 @@ func downloadFileViaRawURL(ctx context.Context, owner, repo, filePath, ref strin
 	return content, nil
 }
 
-// downloadFileViaGitClone downloads a file by shallow cloning the repository
-// This is used as a fallback when git archive doesn't work
+// downloadFileViaGitClone downloads a file by shallow cloning the repository.
+// This is used as a fallback when git archive doesn't work.
 func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error) {
 	if strings.HasPrefix(ref, "-") {
 		return nil, fmt.Errorf("invalid git reference: %q must not start with '-'", ref)
@@ -703,13 +703,30 @@ func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error
 
 	remoteLog.Printf("Attempting git clone fallback for %s/%s/%s@%s", owner, repo, path, ref)
 
-	// Create a temporary directory for the shallow clone
 	tmpDir, err := os.MkdirTemp("", "gh-aw-git-clone-*")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp directory: %w", err)
+		return nil, fmt.Errorf("temporary directory creation failed: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
+	if err := performShallowClone(owner, repo, ref, host, tmpDir); err != nil {
+		return nil, err
+	}
+
+	filePath := filepath.Join(tmpDir, path)
+	if err := fileutil.ValidatePathWithinBase(tmpDir, filePath); err != nil {
+		return nil, fmt.Errorf("access denied: refusing to read file %q outside clone directory %q: %w", path, tmpDir, err)
+	}
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("file read failed for %q in cloned repository: %w", path, err)
+	}
+
+	remoteLog.Printf("Successfully downloaded file via git clone: %s/%s/%s@%s", owner, repo, path, ref)
+	return content, nil
+}
+
+func performShallowClone(owner, repo, ref, host, tmpDir string) error {
 	var githubHost string
 	if host != "" {
 		githubHost = "https://" + host
@@ -718,48 +735,32 @@ func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error
 	}
 	repoURL := fmt.Sprintf("%s/%s/%s.git", githubHost, owner, repo)
 
-	// Check if ref is a SHA (40 hex characters)
-	isSHA := len(ref) == 40 && gitutil.IsHexString(ref)
+	if len(ref) == 40 && gitutil.IsHexString(ref) {
+		return cloneAndCheckoutSHA(repoURL, ref, tmpDir)
+	}
 
-	var cloneCmd *exec.Cmd
-	if isSHA {
-		// For SHA refs, we need to clone without --branch and then checkout the specific commit
-		// Clone with minimal depth and no branch specified
-		cloneCmd = exec.Command("git", "clone", "--depth", "1", "--no-single-branch", "--", repoURL, tmpDir)
+	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--", repoURL, tmpDir)
+	if output, err := cloneCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("clone failed for %s; check repository existence and branch %q: %w\nOutput: %s", repoURL, ref, err, string(output))
+	}
+	return nil
+}
+
+func cloneAndCheckoutSHA(repoURL, sha, tmpDir string) error {
+	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--no-single-branch", "--", repoURL, tmpDir)
+	if output, err := cloneCmd.CombinedOutput(); err != nil {
+		remoteLog.Printf("Shallow clone failed, trying full clone: %s", string(output))
+		cloneCmd = exec.Command("git", "clone", "--", repoURL, tmpDir)
 		if output, err := cloneCmd.CombinedOutput(); err != nil {
-			// Try without --no-single-branch if the first attempt fails
-			remoteLog.Printf("Clone with --no-single-branch failed, trying full clone: %s", string(output))
-			cloneCmd = exec.Command("git", "clone", "--", repoURL, tmpDir)
-			if output, err := cloneCmd.CombinedOutput(); err != nil {
-				return nil, fmt.Errorf("failed to clone repository: %w\nOutput: %s", err, string(output))
-			}
-		}
-
-		// Now checkout the specific commit
-		checkoutCmd := exec.Command("git", "-C", tmpDir, "checkout", "--", ref)
-		if output, err := checkoutCmd.CombinedOutput(); err != nil {
-			return nil, fmt.Errorf("failed to checkout commit %s: %w\nOutput: %s", ref, err, string(output))
-		}
-	} else {
-		// For branch/tag refs, use --branch flag
-		cloneCmd = exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--", repoURL, tmpDir)
-		if output, err := cloneCmd.CombinedOutput(); err != nil {
-			return nil, fmt.Errorf("failed to clone repository: %w\nOutput: %s", err, string(output))
+			return fmt.Errorf("full clone failed for %s: %w\nOutput: %s", repoURL, err, string(output))
 		}
 	}
 
-	// Read the file from the cloned repository
-	filePath := filepath.Join(tmpDir, path)
-	if err := fileutil.ValidatePathWithinBase(tmpDir, filePath); err != nil {
-		return nil, fmt.Errorf("refusing to read file outside clone directory: %w", err)
+	checkoutCmd := exec.Command("git", "-C", tmpDir, "checkout", "--", sha)
+	if output, err := checkoutCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("checkout failed for commit %s: %w\nOutput: %s", sha, err, string(output))
 	}
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file from cloned repository: %w", err)
-	}
-
-	remoteLog.Printf("Successfully downloaded file via git clone: %s/%s/%s@%s", owner, repo, path, ref)
-	return content, nil
+	return nil
 }
 
 // checkRemoteSymlink checks if a path in a remote GitHub repository is a symlink.
@@ -780,7 +781,7 @@ func checkRemoteSymlink(client *api.RESTClient, owner, repo, dirPath, ref string
 
 	// If the response is an array, this is a directory listing — not a symlink
 	trimmed := strings.TrimSpace(string(raw))
-	if len(trimmed) > 0 && trimmed[0] == '[' {
+	if trimmed != "" && trimmed[0] == '[' {
 		remoteLog.Printf("Path component %s is a directory (not a symlink)", dirPath)
 		return "", false, nil
 	}
