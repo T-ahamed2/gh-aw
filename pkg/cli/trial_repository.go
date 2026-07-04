@@ -358,7 +358,7 @@ func writeWorkflowToTrialDir(tempDir string, workflowName string, content []byte
 	trialRepoLog.Printf("Writing workflow to trial dir: workflow=%s, content_size=%d bytes, securityScanDisabled=%v", workflowName, len(content), opts.DisableSecurityScanner)
 	// Security scan: reject workflows containing malicious or dangerous content
 	if !opts.DisableSecurityScanner {
-		if findings := workflow.ScanMarkdownSecurity(string(content)); len(findings) != 0 {
+		if findings := workflow.ScanMarkdownSecurity(string(content)); len(findings) > 0 {
 			fmt.Fprintln(os.Stderr, console.FormatErrorMessage("Security scan failed for workflow"))
 			fmt.Fprintln(os.Stderr, workflow.FormatSecurityFindings(findings, workflowName))
 			return nil, fmt.Errorf("workflow '%s' failed security scan: %d issue(s) detected", workflowName, len(findings))
@@ -513,13 +513,13 @@ func commitAndPushWorkflow(tempDir, workflowName string, verbose bool) error {
 	if verbose {
 		fmt.Fprintln(os.Stderr, console.FormatInfoMessage("Pulling latest changes from main branch"))
 	}
-	cmd = exec.Command("git", "pull", "--", "origin", "main")
+	cmd = exec.Command("git", "pull", "origin", "main")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to pull latest changes: %w (output: %s)", err, string(output))
 	}
 
 	// Push to main
-	cmd = exec.Command("git", "push", "--", "origin", "main")
+	cmd = exec.Command("git", "push", "origin", "main")
 	cmd.Dir = tempDir
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to push changes: %w (output: %s)", err, string(output))
@@ -551,7 +551,7 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 	// Clone the source repository
 	cloneURL := fmt.Sprintf("https://github.com/%s.git", cloneRepoSlug)
 
-	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", cloneRepoSlug), "clone", cloneURL, tempCloneDir)
+	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", cloneRepoSlug), "clone", "--", cloneURL, tempCloneDir)
 	if err != nil {
 		return fmt.Errorf("failed to clone source repository %s: %w (output: %s)", cloneURL, err, string(output))
 	}
@@ -566,7 +566,7 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 		if strings.HasPrefix(cloneRepoVersion, "-") {
 			return fmt.Errorf("invalid clone repository version: %q must not start with '-'", cloneRepoVersion)
 		}
-		checkoutCmd := exec.Command("git", "checkout", "--", cloneRepoVersion)
+		checkoutCmd := exec.Command("git", "checkout", cloneRepoVersion)
 		if output, err := checkoutCmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to checkout ref '%s': %w (output: %s)", cloneRepoVersion, err, string(output))
 		}
@@ -580,7 +580,7 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 	}
 
 	// Force push the current branch to the host repository's main branch
-	pushCmd := exec.Command("git", "push", "--force", "--", "host", "HEAD:main")
+	pushCmd := exec.Command("git", "push", "--force", "host", "HEAD:main")
 	if output, err := pushCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to force push to host repository: %w (output: %s)", err, string(output))
 	}

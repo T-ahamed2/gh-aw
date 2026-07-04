@@ -46,6 +46,9 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 	if ref == "" {
 		return "", errors.New("git fallback requires a non-empty ref")
 	}
+	if strings.HasPrefix(ref, "-") {
+		return "", fmt.Errorf("invalid ref %q: must not start with '-'", ref)
+	}
 
 	githubHost := GetGitHubHostForRepo(owner, repo)
 	if host != "" {
@@ -70,7 +73,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return "", fmt.Errorf("temporary directory creation failed; should have sufficient system permissions and disk space: %w", err)
+		return "", fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
 	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", "--", repoURL, tmpDir)
@@ -80,7 +83,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 			remoteLog.Printf("Failed to clean up temp directory %q: %v", tmpDir, cleanupErr)
 		}
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return "", fmt.Errorf("git clone failed for %s/%s@%s; repository should exist and be accessible with a valid ref: %w", owner, repo, ref, err)
+		return "", fmt.Errorf("failed to clone repository for %s/%s@%s: %w", owner, repo, ref, err)
 	}
 
 	existingDir, found := func() (string, bool) {
@@ -261,7 +264,7 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if stripped, ok := strings.CutPrefix(filepath.ToSlash(filePath), "/"); ok {
 		if !strings.HasPrefix(stripped, constants.GithubDir) && !strings.HasPrefix(stripped, ".agents/") {
 			remoteLog.Printf("Security: Path not within .github or .agents: %s", filePath)
-			return "", fmt.Errorf("invalid path %s; local includes should be located within .github or .agents folder", filePath)
+			return "", fmt.Errorf("security: path %s must be within .github or .agents folder", filePath)
 		}
 	}
 	fullPath := filepath.Join(resolveBase, filePath)
@@ -271,7 +274,7 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if err != nil || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) || filepath.IsAbs(relativePath) {
 		allowedFolder := filepath.Base(normalizedSecurityBase)
 		remoteLog.Printf("Security: Path escapes allowed folder: %s (resolves to: %s)", filePath, relativePath)
-		return "", fmt.Errorf("invalid path %s; local includes should be located within the %s folder (resolves to: %s)", filePath, allowedFolder, relativePath)
+		return "", fmt.Errorf("security: path %s must be within %s folder (resolves to: %s)", filePath, allowedFolder, relativePath)
 	}
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
@@ -359,7 +362,7 @@ func downloadIncludeFromWorkflowSpec(spec string, cache *ImportCache) (string, e
 	remoteLog.Printf("Fetching file from GitHub: %s/%s/%s@%s", owner, repo, filePath, ref)
 	content, err := downloadFileFromGitHub(owner, repo, filePath, ref)
 	if err != nil {
-		return "", fmt.Errorf("include download failed for %s; ensure the repository is public or your token has sufficient permissions. Example: owner/repo/path@ref: %w", spec, err)
+		return "", fmt.Errorf("failed to download include from %s: %w", spec, err)
 	}
 	remoteLog.Printf("Successfully downloaded file: size=%d bytes", len(content))
 
@@ -391,7 +394,7 @@ func parseWorkflowSpecParts(spec string) (string, string, string, string, error)
 	slashParts := strings.Split(pathPart, "/")
 	if len(slashParts) < 3 {
 		remoteLog.Printf("Invalid workflowspec format: %s", spec)
-		return "", "", "", "", errors.New("invalid workflowspec; expected format is owner/repo/path[@ref]")
+		return "", "", "", "", errors.New("invalid workflowspec: must be owner/repo/path[@ref]")
 	}
 	return slashParts[0], slashParts[1], strings.Join(slashParts[2:], "/"), ref, nil
 }
@@ -411,7 +414,7 @@ func resolveWorkflowSpecSHAForCache(owner, repo, ref string, cache *ImportCache)
 func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 	tempFile, err := os.CreateTemp("", "gh-aw-include-*.md")
 	if err != nil {
-		return "", fmt.Errorf("temp file creation should succeed; check system permissions: %w", err)
+		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
 	cleanupOnError := true
 	fileClosed := false
@@ -432,11 +435,11 @@ func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 			remoteLog.Printf("Warning: failed to close temp file during cleanup: %v", closeErr)
 		}
 		fileClosed = true
-		return "", fmt.Errorf("writing to temp file should succeed; check disk space: %w", err)
+		return "", fmt.Errorf("failed to write temp file: %w", err)
 	}
 	if err := tempFile.Close(); err != nil {
 		fileClosed = true
-		return "", fmt.Errorf("closing temp file should succeed: %w", err)
+		return "", fmt.Errorf("failed to close temp file: %w", err)
 	}
 	cleanupOnError = false
 	fileClosed = true
@@ -446,10 +449,6 @@ func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 // resolveRefToSHAViaGit resolves a git ref to SHA using git ls-remote
 // This is a fallback for when GitHub API authentication fails
 func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
-	if strings.HasPrefix(ref, "-") {
-		return "", fmt.Errorf("invalid git reference: %q should not start with '-'", ref)
-	}
-
 	remoteLog.Printf("Attempting git ls-remote fallback for ref resolution: %s/%s@%s", owner, repo, ref)
 
 	var githubHost string
@@ -462,20 +461,23 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 
 	// Try to resolve the ref using git ls-remote
 	// Format: git ls-remote <repo> <ref>
-	cmd := exec.Command("git", "ls-remote", "--", repoURL, ref)
+	if strings.HasPrefix(ref, "-") {
+		return "", fmt.Errorf("invalid ref %q: must not start with '-'", ref)
+	}
+	cmd := exec.Command("git", "ls-remote", repoURL, ref)
 	output, err := cmd.Output()
 	if err != nil {
 		// If exact ref doesn't work, try with refs/heads/ and refs/tags/ prefixes
 		for _, prefix := range []string{"refs/heads/", "refs/tags/"} {
-			cmd = exec.Command("git", "ls-remote", "--", repoURL, prefix+ref)
+			cmd = exec.Command("git", "ls-remote", repoURL, prefix+ref)
 			output, err = cmd.Output()
-			if err == nil && string(output) != "" {
+			if err == nil && len(output) > 0 {
 				break
 			}
 		}
 
 		if err != nil {
-			return "", fmt.Errorf("resolving ref via git ls-remote should succeed; check if the ref exists: %w", err)
+			return "", fmt.Errorf("failed to resolve ref via git ls-remote: %w", err)
 		}
 	}
 
@@ -488,14 +490,14 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 	// Extract SHA from the first line
 	parts := strings.Fields(lines[0])
 	if len(parts) < 1 {
-		return "", errors.New("invalid git ls-remote output format; expected 'SHA ref' pair")
+		return "", errors.New("invalid git ls-remote output format")
 	}
 
 	sha := parts[0]
 
 	// Validate it's a valid SHA
 	if len(sha) != 40 || !gitutil.IsHexString(sha) {
-		return "", fmt.Errorf("invalid SHA format from git ls-remote: %s; expected 40-character hex string", sha)
+		return "", fmt.Errorf("invalid SHA format from git ls-remote: %s", sha)
 	}
 
 	remoteLog.Printf("Successfully resolved ref via git ls-remote: %s/%s@%s -> %s", owner, repo, ref, sha)
@@ -505,9 +507,8 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 // resolveRefToSHA resolves a git ref (branch, tag, or SHA) to its commit SHA
 func resolveRefToSHA(owner, repo, ref, host string) (string, error) {
 	if strings.HasPrefix(ref, "-") {
-		return "", fmt.Errorf("invalid git reference: %q should not start with '-'", ref)
+		return "", fmt.Errorf("invalid ref %q: must not start with '-'", ref)
 	}
-
 	// If ref is already a full SHA (40 hex characters), return it as-is
 	if len(ref) == 40 && gitutil.IsHexString(ref) {
 		return ref, nil
@@ -537,12 +538,12 @@ func resolveRefToSHA(owner, repo, ref, host string) (string, error) {
 					remoteLog.Printf("Git fallback also failed, attempting unauthenticated API for %s/%s@%s", owner, repo, ref)
 					return resolveRefToSHAViaPublicAPI(owner, repo, ref)
 				}
-				return "", fmt.Errorf("resolving ref via GitHub API and git ls-remote should succeed; check accessibility: API error: %w, Git error: %w", err, gitErr)
+				return "", fmt.Errorf("failed to resolve ref via GitHub API (auth error) and git ls-remote: API error: %w, Git error: %w", err, gitErr)
 			}
 			return sha, nil
 		}
 
-		return "", fmt.Errorf("resolving ref %s for %s/%s should succeed; check if it exists: %s: %w", ref, owner, repo, strings.TrimSpace(outputStr), err)
+		return "", fmt.Errorf("failed to resolve ref %s to SHA for %s/%s: %s: %w", ref, owner, repo, strings.TrimSpace(outputStr), err)
 	}
 
 	sha := strings.TrimSpace(stdout.String())
@@ -552,7 +553,7 @@ func resolveRefToSHA(owner, repo, ref, host string) (string, error) {
 
 	// Validate it's a valid SHA (40 hex characters)
 	if len(sha) != 40 || !gitutil.IsHexString(sha) {
-		return "", fmt.Errorf("invalid SHA format returned: %s; expected 40-character hex string", sha)
+		return "", fmt.Errorf("invalid SHA format returned: %s", sha)
 	}
 
 	return sha, nil
@@ -577,10 +578,7 @@ func resolveRefToSHAViaPublicAPI(owner, repo, ref string) (string, error) {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	// Use a client with a timeout to prevent indefinite hangs.
-	apiClient := &http.Client{Timeout: constants.DefaultHTTPClientTimeout}
-
-	resp, err := apiClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -591,17 +589,17 @@ func resolveRefToSHAViaPublicAPI(owner, repo, ref string) (string, error) {
 		return "", err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unauthenticated public API failed for %s/%s@%s: HTTP %d: %s; valid public repository and sufficient rate limit required", owner, repo, ref, resp.StatusCode, strings.TrimSpace(string(body)))
+		return "", fmt.Errorf("unauthenticated public API failed for %s/%s@%s: HTTP %d: %s", owner, repo, ref, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var result struct {
 		SHA string `json:"sha"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("parsing commit response should succeed; ensure valid JSON: %w", err)
+		return "", fmt.Errorf("failed to parse commit response: %w", err)
 	}
 	if result.SHA == "" || len(result.SHA) != 40 || !gitutil.IsHexString(result.SHA) {
-		return "", fmt.Errorf("invalid SHA returned from public API: %q; expected 40-character hex string", result.SHA)
+		return "", fmt.Errorf("invalid SHA returned from public API: %q", result.SHA)
 	}
 	return result.SHA, nil
 }
@@ -610,12 +608,11 @@ func resolveRefToSHAViaPublicAPI(owner, repo, ref string) (string, error) {
 // This is a fallback for when GitHub API authentication fails
 func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string) ([]byte, error) {
 	if strings.HasPrefix(ref, "-") {
-		return nil, fmt.Errorf("invalid git reference: %q should not start with '-'", ref)
+		return nil, fmt.Errorf("invalid ref %q: must not start with '-'", ref)
 	}
 	if strings.HasPrefix(path, "-") {
-		return nil, fmt.Errorf("invalid file path: %q should not start with '-'", path)
+		return nil, fmt.Errorf("invalid path %q: must not start with '-'", path)
 	}
-
 	remoteLog.Printf("Attempting git fallback for %s/%s/%s@%s", owner, repo, path, ref)
 
 	// First, try via raw.githubusercontent.com — no auth required for public repos and
@@ -642,8 +639,8 @@ func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string
 
 	// git archive command: git archive --remote=<repo> <ref> <path>
 	// #nosec G204 -- repoURL, ref, and path are from workflow import configuration authored by the
-	// developer; exec.CommandContext with separate args (not shell execution) prevents shell injection.
-	cmd := exec.CommandContext(ctx, "git", "archive", "--remote="+repoURL, ref, "--", path)
+	// developer; exec.Command with separate args (not shell execution) prevents shell injection.
+	cmd := exec.Command("git", "archive", "--remote="+repoURL, ref, "--", path)
 	archiveOutput, err := cmd.Output()
 	if err != nil {
 		// If git archive fails, try with git clone + git show as a fallback
@@ -653,7 +650,7 @@ func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string
 	// Extract the file from the tar archive using Go's archive/tar (cross-platform)
 	content, err := fileutil.ExtractFileFromTar(archiveOutput, path)
 	if err != nil {
-		return nil, fmt.Errorf("file extraction from git archive should succeed; ensure the path %s is valid: %w", path, err)
+		return nil, fmt.Errorf("failed to extract file from git archive: %w", err)
 	}
 
 	remoteLog.Printf("Successfully downloaded file via git archive: %s/%s/%s@%s", owner, repo, path, ref)
@@ -673,63 +670,39 @@ func downloadFileViaRawURL(ctx context.Context, owner, repo, filePath, ref strin
 	// the developer; the owner, repo, filePath, and ref are user-supplied workflow spec fields.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("raw URL request for %s should succeed: %w", rawURL, err)
+		return nil, fmt.Errorf("raw URL request failed for %s: %w", rawURL, err)
 	}
 	resp, err := rawClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("raw URL request for %s should succeed; check network: %w", rawURL, err)
+		return nil, fmt.Errorf("raw URL request failed for %s: %w", rawURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("raw URL should return 200 OK, got HTTP %d for %s", resp.StatusCode, rawURL)
+		return nil, fmt.Errorf("raw URL returned HTTP %d for %s", resp.StatusCode, rawURL)
 	}
 
 	content, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading raw URL response body for %s should succeed: %w", rawURL, err)
+		return nil, fmt.Errorf("failed to read raw URL response body for %s: %w", rawURL, err)
 	}
 
 	remoteLog.Printf("Successfully downloaded file via raw URL: %s", rawURL)
 	return content, nil
 }
 
-// downloadFileViaGitClone downloads a file by shallow cloning the repository.
-// This is used as a fallback when git archive doesn't work.
+// downloadFileViaGitClone downloads a file by shallow cloning the repository
+// This is used as a fallback when git archive doesn't work
 func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error) {
-	if strings.HasPrefix(ref, "-") {
-		return nil, fmt.Errorf("invalid git reference: %q should not start with '-'", ref)
-	}
-	if strings.HasPrefix(path, "-") {
-		return nil, fmt.Errorf("invalid file path: %q should not start with '-'", path)
-	}
-
 	remoteLog.Printf("Attempting git clone fallback for %s/%s/%s@%s", owner, repo, path, ref)
 
+	// Create a temporary directory for the shallow clone
 	tmpDir, err := os.MkdirTemp("", "gh-aw-git-clone-*")
 	if err != nil {
-		return nil, fmt.Errorf("temp directory creation should succeed; check system permissions: %w", err)
+		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	if err := performShallowClone(owner, repo, ref, host, tmpDir); err != nil {
-		return nil, err
-	}
-
-	filePath := filepath.Join(tmpDir, path)
-	if err := fileutil.ValidatePathWithinBase(tmpDir, filePath); err != nil {
-		return nil, fmt.Errorf("access denied: file %q should be within clone directory %q: %w", path, tmpDir, err)
-	}
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("file read for %q in cloned repository should succeed: %w", path, err)
-	}
-
-	remoteLog.Printf("Successfully downloaded file via git clone: %s/%s/%s@%s", owner, repo, path, ref)
-	return content, nil
-}
-
-func performShallowClone(owner, repo, ref, host, tmpDir string) error {
 	var githubHost string
 	if host != "" {
 		githubHost = "https://" + host
@@ -738,32 +711,56 @@ func performShallowClone(owner, repo, ref, host, tmpDir string) error {
 	}
 	repoURL := fmt.Sprintf("%s/%s/%s.git", githubHost, owner, repo)
 
-	if len(ref) == 40 && gitutil.IsHexString(ref) {
-		return cloneAndCheckoutSHA(repoURL, ref, tmpDir)
+	// Prevent Git argument injection
+	if strings.HasPrefix(ref, "-") {
+		return nil, fmt.Errorf("invalid ref %q: must not start with '-'", ref)
+	}
+	if strings.HasPrefix(path, "-") {
+		return nil, fmt.Errorf("invalid path %q: must not start with '-'", path)
 	}
 
-	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--", repoURL, tmpDir)
-	if output, err := cloneCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("clone for %s should succeed; check repository existence and if branch %q is valid: %w\nOutput: %s", repoURL, ref, err, string(output))
-	}
-	return nil
-}
+	// Check if ref is a SHA (40 hex characters)
+	isSHA := len(ref) == 40 && gitutil.IsHexString(ref)
 
-func cloneAndCheckoutSHA(repoURL, sha, tmpDir string) error {
-	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--no-single-branch", "--", repoURL, tmpDir)
-	if output, err := cloneCmd.CombinedOutput(); err != nil {
-		remoteLog.Printf("Shallow clone failed, trying full clone: %s", string(output))
-		cloneCmd = exec.Command("git", "clone", "--", repoURL, tmpDir)
+	var cloneCmd *exec.Cmd
+	if isSHA {
+		// For SHA refs, we need to clone without --branch and then checkout the specific commit
+		// Clone with minimal depth and no branch specified
+		cloneCmd = exec.Command("git", "clone", "--depth", "1", "--no-single-branch", "--", repoURL, tmpDir)
 		if output, err := cloneCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("full clone for %s should succeed; check repository accessibility: %w\nOutput: %s", repoURL, err, string(output))
+			// Try without --no-single-branch if the first attempt fails
+			remoteLog.Printf("Clone with --no-single-branch failed, trying full clone: %s", string(output))
+			cloneCmd = exec.Command("git", "clone", "--", repoURL, tmpDir)
+			if output, err := cloneCmd.CombinedOutput(); err != nil {
+				return nil, fmt.Errorf("failed to clone repository: %w\nOutput: %s", err, string(output))
+			}
+		}
+
+		// Now checkout the specific commit
+		checkoutCmd := exec.Command("git", "-C", tmpDir, "checkout", ref)
+		if output, err := checkoutCmd.CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("failed to checkout commit %s: %w\nOutput: %s", ref, err, string(output))
+		}
+	} else {
+		// For branch/tag refs, use --branch flag
+		cloneCmd = exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--", repoURL, tmpDir)
+		if output, err := cloneCmd.CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("failed to clone repository: %w\nOutput: %s", err, string(output))
 		}
 	}
 
-	checkoutCmd := exec.Command("git", "-C", tmpDir, "checkout", "--", sha)
-	if output, err := checkoutCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("checkout for commit %s should succeed; SHA should be valid and present: %w\nOutput: %s", sha, err, string(output))
+	// Read the file from the cloned repository
+	filePath := filepath.Join(tmpDir, path)
+	if err := fileutil.ValidatePathWithinBase(tmpDir, filePath); err != nil {
+		return nil, fmt.Errorf("refusing to read file outside clone directory: %w", err)
 	}
-	return nil
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file from cloned repository: %w", err)
+	}
+
+	remoteLog.Printf("Successfully downloaded file via git clone: %s/%s/%s@%s", owner, repo, path, ref)
+	return content, nil
 }
 
 // checkRemoteSymlink checks if a path in a remote GitHub repository is a symlink.
@@ -784,7 +781,7 @@ func checkRemoteSymlink(client *api.RESTClient, owner, repo, dirPath, ref string
 
 	// If the response is an array, this is a directory listing — not a symlink
 	trimmed := strings.TrimSpace(string(raw))
-	if trimmed != "" && trimmed[0] == '[' {
+	if len(trimmed) > 0 && trimmed[0] == '[' {
 		remoteLog.Printf("Path component %s is a directory (not a symlink)", dirPath)
 		return "", false, nil
 	}
@@ -795,7 +792,7 @@ func checkRemoteSymlink(client *api.RESTClient, owner, repo, dirPath, ref string
 		Target string `json:"target"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return "", false, fmt.Errorf("parsing contents response for %s should succeed; ensure valid JSON: %w", dirPath, err)
+		return "", false, fmt.Errorf("failed to parse contents response for %s: %w", dirPath, err)
 	}
 
 	if result.Type == "symlink" && result.Target != "" {
@@ -853,7 +850,7 @@ func resolveRemoteSymlinkComponent(
 			remoteLog.Printf("Path component %s returned 404, skipping", dirPath)
 			return "", false, nil
 		}
-		return "", false, fmt.Errorf("symlink check for path component %s should succeed: %w", dirPath, err)
+		return "", false, fmt.Errorf("failed to check path component %s for symlinks: %w", dirPath, err)
 	}
 	if !isSymlink {
 		return "", false, nil
@@ -927,11 +924,11 @@ func downloadFileFromGitHubWithDepth(owner, repo, path, ref string, symlinkDepth
 			content, gitErr := downloadFileViaGit(context.Background(), owner, repo, path, ref, host)
 			if gitErr != nil {
 				remoteLog.Printf("Git fallback also failed for %s/%s/%s@%s: %v", owner, repo, path, ref, gitErr)
-				return nil, fmt.Errorf("fetching file content should succeed; check repository accessibility: %w", err)
+				return nil, fmt.Errorf("failed to fetch file content: %w", err)
 			}
 			return content, nil
 		}
-		return nil, fmt.Errorf("REST client creation should succeed: %w", err)
+		return nil, fmt.Errorf("failed to create REST client: %w", err)
 	}
 
 	var fileContent struct {
@@ -950,7 +947,7 @@ func downloadFileFromGitHubWithDepth(owner, repo, path, ref string, symlinkDepth
 					remoteLog.Printf("Git fallback also failed, attempting unauthenticated API for %s/%s/%s@%s", owner, repo, path, ref)
 					return downloadFileViaPublicAPI(owner, repo, path, ref)
 				}
-				return nil, fmt.Errorf("fetching file content via API or Git should succeed; check accessibility: API error: %w, Git error: %w", err, gitErr)
+				return nil, fmt.Errorf("failed to fetch file content via GitHub API (auth error) and git fallback: API error: %w, Git error: %w", err, gitErr)
 			}
 			return content, nil
 		}
@@ -961,16 +958,16 @@ func downloadFileFromGitHubWithDepth(owner, repo, path, ref string, symlinkDepth
 			}
 		}
 
-		return nil, fmt.Errorf("fetching file content for %s/%s/%s@%s should succeed; check if it exists: %w", owner, repo, path, ref, err)
+		return nil, fmt.Errorf("failed to fetch file content from %s/%s/%s@%s: %w", owner, repo, path, ref, err)
 	}
 
 	if fileContent.Content == "" {
-		return nil, fmt.Errorf("file content for %s/%s/%s@%s should not be empty", owner, repo, path, ref)
+		return nil, fmt.Errorf("empty content returned from GitHub API for %s/%s/%s@%s", owner, repo, path, ref)
 	}
 
 	content, err := base64.StdEncoding.DecodeString(fileContent.Content)
 	if err != nil {
-		return nil, fmt.Errorf("base64 decoding should succeed: %w", err)
+		return nil, fmt.Errorf("failed to decode base64 content: %w", err)
 	}
 
 	return content, nil
@@ -1009,7 +1006,7 @@ func downloadFileViaPublicAPI(owner, repo, path, ref string) ([]byte, error) {
 	remoteLog.Printf("Attempting unauthenticated public API download for %s/%s/%s@%s", owner, repo, path, ref)
 	body, err := fetchPublicGitHubContentsAPI(owner, repo, path, ref)
 	if err != nil {
-		return nil, fmt.Errorf("unauthenticated public API download for %s/%s/%s@%s should succeed: %w", owner, repo, path, ref, err)
+		return nil, fmt.Errorf("unauthenticated public API also failed for %s/%s/%s@%s: %w", owner, repo, path, ref, err)
 	}
 
 	var fileContent struct {
@@ -1017,15 +1014,15 @@ func downloadFileViaPublicAPI(owner, repo, path, ref string) ([]byte, error) {
 		Encoding string `json:"encoding"`
 	}
 	if err := json.Unmarshal(body, &fileContent); err != nil {
-		return nil, fmt.Errorf("parsing public API response should succeed; ensure valid JSON: %w", err)
+		return nil, fmt.Errorf("failed to parse public API file response: %w", err)
 	}
 	if fileContent.Content == "" {
-		return nil, fmt.Errorf("public API should return non-empty content for %s/%s/%s@%s", owner, repo, path, ref)
+		return nil, fmt.Errorf("empty content returned from public API for %s/%s/%s@%s", owner, repo, path, ref)
 	}
 
 	content, err := base64.StdEncoding.DecodeString(fileContent.Content)
 	if err != nil {
-		return nil, fmt.Errorf("base64 decoding from public API should succeed: %w", err)
+		return nil, fmt.Errorf("failed to decode base64 content from public API: %w", err)
 	}
 	return content, nil
 }
@@ -1090,12 +1087,12 @@ func listWorkflowFilesForHost(owner, repo, ref, workflowPath, host string) ([]st
 					remoteLog.Printf("Git fallback also failed, attempting unauthenticated API for %s/%s@%s", owner, repo, ref)
 					return listWorkflowFilesViaPublicAPI(owner, repo, ref, workflowPath)
 				}
-				return nil, fmt.Errorf("listing workflow files via API or Git should succeed; check accessibility: API error: %w, Git error: %w", err, gitErr)
+				return nil, fmt.Errorf("failed to list workflow files via GitHub API (auth error) and git fallback: API error: %w, Git error: %w", err, gitErr)
 			}
 			return files, nil
 		}
 
-		return nil, fmt.Errorf("listing workflow files for %s/%s@%s should succeed; ensure path %s is valid: %w", owner, repo, ref, workflowPath, err)
+		return nil, fmt.Errorf("failed to list workflow files from %s/%s@%s (path: %s): %w", owner, repo, ref, workflowPath, err)
 	}
 
 	// Filter to only .md files (not in subdirectories)
@@ -1144,11 +1141,11 @@ func listDirAllFilesForHost(owner, repo, ref, dirPath, host string) ([]string, e
 					remoteLog.Printf("Git fallback also failed, attempting unauthenticated API for %s/%s@%s", owner, repo, ref)
 					return listDirAllFilesViaPublicAPI(owner, repo, ref, dirPath)
 				}
-				return nil, fmt.Errorf("listing directory files via API or Git should succeed; check accessibility: API error: %w, Git error: %w", err, gitErr)
+				return nil, fmt.Errorf("failed to list dir files via API (auth error) and git fallback: API error: %w, Git error: %w", err, gitErr)
 			}
 			return files, nil
 		}
-		return nil, fmt.Errorf("listing directory files for %s/%s@%s should succeed; ensure path %s is valid: %w", owner, repo, ref, dirPath, err)
+		return nil, fmt.Errorf("failed to list dir files from %s/%s@%s (path: %s): %w", owner, repo, ref, dirPath, err)
 	}
 
 	var files []string
@@ -1174,7 +1171,7 @@ func listDirAllFilesViaGitForHost(owner, repo, ref, dirPath, host string) ([]str
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list dir files: %s", string(lsTreeOutput))
-		return nil, fmt.Errorf("listing directory files for path %q should succeed; ensure it exists in the repository: %w", dirPath, err)
+		return nil, fmt.Errorf("failed to list dir files: %w", err)
 	}
 
 	lines := strings.Split(strings.TrimSpace(string(lsTreeOutput)), "\n")
@@ -1202,7 +1199,7 @@ func listDirAllFilesViaPublicAPI(owner, repo, ref, dirPath string) ([]string, er
 	remoteLog.Printf("Attempting unauthenticated public API for listing dir files: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 	body, err := fetchPublicGitHubContentsAPI(owner, repo, dirPath, ref)
 	if err != nil {
-		return nil, fmt.Errorf("unauthenticated public API listing for %s/%s@%s (path: %s) should succeed: %w", owner, repo, ref, dirPath, err)
+		return nil, fmt.Errorf("unauthenticated public API also failed for %s/%s@%s (path: %s): %w", owner, repo, ref, dirPath, err)
 	}
 
 	var contents []struct {
@@ -1210,7 +1207,7 @@ func listDirAllFilesViaPublicAPI(owner, repo, ref, dirPath string) ([]string, er
 		Type string `json:"type"`
 	}
 	if err := json.Unmarshal(body, &contents); err != nil {
-		return nil, fmt.Errorf("parsing public API response should succeed; ensure valid JSON: %w", err)
+		return nil, fmt.Errorf("failed to parse public API response: %w", err)
 	}
 
 	var files []string
@@ -1249,7 +1246,7 @@ func listDirAllFilesRecursivelyForHost(owner, repo, ref, dirPath, host string) (
 				// No public API fallback for recursive listing — would require
 				// multiple unauthenticated calls and is unlikely to stay within
 				// the 60 req/hour rate limit. Surface both errors.
-				return nil, fmt.Errorf("recursive listing via API or Git should succeed; check accessibility: API error: %w, Git error: %w", err, gitErr)
+				return nil, fmt.Errorf("failed to list dir files recursively via API (auth error) and git fallback: API error: %w, Git error: %w", err, gitErr)
 			}
 			return gitFiles, nil
 		}
@@ -1280,7 +1277,7 @@ func listContentsRecursivelyWithDepth(client *api.RESTClient, owner, repo, ref, 
 
 	endpoint := buildContentsAPIPath(owner, repo, dirPath, ref)
 	if err := client.Get(endpoint, &contents); err != nil {
-		return nil, fmt.Errorf("listing directory files from %s/%s should succeed; ensure path %s is valid: %w", owner, repo, dirPath, err)
+		return nil, fmt.Errorf("failed to list dir files from %s/%s (path: %s): %w", owner, repo, dirPath, err)
 	}
 
 	var files []string
@@ -1313,7 +1310,7 @@ func listDirAllFilesRecursivelyViaGitForHost(owner, repo, ref, dirPath, host str
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list dir files recursively: %s", string(lsTreeOutput))
-		return nil, fmt.Errorf("recursive directory listing for path %q should succeed; ensure it exists in the repository: %w", dirPath, err)
+		return nil, fmt.Errorf("failed to list dir files recursively: %w", err)
 	}
 
 	lines := strings.Split(strings.TrimSpace(string(lsTreeOutput)), "\n")
@@ -1354,10 +1351,7 @@ func fetchPublicGitHubContentsAPI(owner, repo, path, ref string) ([]byte, error)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	// Use a client with a timeout to prevent indefinite hangs.
-	apiClient := &http.Client{Timeout: constants.DefaultHTTPClientTimeout}
-
-	resp, err := apiClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -1406,11 +1400,11 @@ func listDirSubdirsForHost(owner, repo, ref, dirPath, host string) ([]string, er
 					remoteLog.Printf("Git fallback also failed, attempting unauthenticated API for %s/%s@%s", owner, repo, ref)
 					return listDirSubdirsViaPublicAPI(owner, repo, ref, dirPath)
 				}
-				return nil, fmt.Errorf("listing subdirectories via API or Git should succeed; check accessibility: API error: %w, Git error: %w", err, gitErr)
+				return nil, fmt.Errorf("failed to list subdirs via API (auth error) and git fallback: API error: %w, Git error: %w", err, gitErr)
 			}
 			return dirs, nil
 		}
-		return nil, fmt.Errorf("listing subdirectories for %s/%s@%s should succeed; ensure path %s is valid: %w", owner, repo, ref, dirPath, err)
+		return nil, fmt.Errorf("failed to list subdirs from %s/%s@%s (path: %s): %w", owner, repo, ref, dirPath, err)
 	}
 
 	var dirs []string
@@ -1437,7 +1431,7 @@ func listDirSubdirsViaGitForHost(owner, repo, ref, dirPath, host string) ([]stri
 	lsTreeDirsOutput, err := lsTreeDirsCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list tree subdirs: %s", string(lsTreeDirsOutput))
-		return nil, fmt.Errorf("listing subdirectories for path %q should succeed; ensure it exists in the repository: %w", dirPath, err)
+		return nil, fmt.Errorf("failed to list subdirs: %w", err)
 	}
 
 	lines := strings.Split(strings.TrimSpace(string(lsTreeDirsOutput)), "\n")
@@ -1464,7 +1458,7 @@ func listDirSubdirsViaPublicAPI(owner, repo, ref, dirPath string) ([]string, err
 	remoteLog.Printf("Attempting unauthenticated public API for listing subdirs: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 	body, err := fetchPublicGitHubContentsAPI(owner, repo, dirPath, ref)
 	if err != nil {
-		return nil, fmt.Errorf("unauthenticated public API subdirectory listing for %s/%s@%s (path: %s) should succeed: %w", owner, repo, ref, dirPath, err)
+		return nil, fmt.Errorf("unauthenticated public API also failed for %s/%s@%s (path: %s): %w", owner, repo, ref, dirPath, err)
 	}
 
 	var contents []struct {
@@ -1473,7 +1467,7 @@ func listDirSubdirsViaPublicAPI(owner, repo, ref, dirPath string) ([]string, err
 		Type string `json:"type"`
 	}
 	if err := json.Unmarshal(body, &contents); err != nil {
-		return nil, fmt.Errorf("parsing public API response should succeed; ensure valid JSON: %w", err)
+		return nil, fmt.Errorf("failed to parse public API response: %w", err)
 	}
 
 	var dirs []string
@@ -1498,7 +1492,7 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 	// Create a temporary directory for minimal clone
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return nil, fmt.Errorf("temp directory creation should succeed; check system permissions: %w", err)
+		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -1508,7 +1502,7 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 	cloneOutput, err := cloneCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return nil, fmt.Errorf("git clone for %s/%s@%s should succeed; check accessibility and ref validity: %w", owner, repo, ref, err)
+		return nil, fmt.Errorf("failed to clone repository for %s/%s@%s: %w", owner, repo, ref, err)
 	}
 
 	// Use git ls-tree to list files in the specified workflows directory
@@ -1516,7 +1510,7 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list files: %s", string(lsTreeOutput))
-		return nil, fmt.Errorf("listing workflow files for path %q should succeed; ensure it exists in the repository: %w", workflowPath, err)
+		return nil, fmt.Errorf("failed to list workflow files: %w", err)
 	}
 
 	// Parse output and filter for .md files (not in subdirectories)
@@ -1548,7 +1542,7 @@ func listWorkflowFilesViaPublicAPI(owner, repo, ref, workflowPath string) ([]str
 	remoteLog.Printf("Attempting unauthenticated public API for listing workflow files: %s/%s@%s (path: %s)", owner, repo, ref, workflowPath)
 	body, err := fetchPublicGitHubContentsAPI(owner, repo, workflowPath, ref)
 	if err != nil {
-		return nil, fmt.Errorf("unauthenticated public API workflow listing for %s/%s@%s (path: %s) should succeed: %w", owner, repo, ref, workflowPath, err)
+		return nil, fmt.Errorf("unauthenticated public API also failed for %s/%s@%s (path: %s): %w", owner, repo, ref, workflowPath, err)
 	}
 
 	var contents []struct {
@@ -1557,7 +1551,7 @@ func listWorkflowFilesViaPublicAPI(owner, repo, ref, workflowPath string) ([]str
 		Type string `json:"type"`
 	}
 	if err := json.Unmarshal(body, &contents); err != nil {
-		return nil, fmt.Errorf("parsing public API response should succeed; ensure valid JSON: %w", err)
+		return nil, fmt.Errorf("failed to parse public API response: %w", err)
 	}
 
 	var workflowFiles []string

@@ -3,7 +3,6 @@
 package parser
 
 import (
-	"context"
 	"strings"
 	"testing"
 )
@@ -85,45 +84,46 @@ func TestListContentsRecursivelyWithDepth_MaxDepthGuard(t *testing.T) {
 }
 
 func TestGitArgumentInjectionProtection(t *testing.T) {
-	t.Run("resolveRefToSHAViaGit rejects hyphen ref", func(t *testing.T) {
+	t.Run("resolveRefToSHAViaGit_rejects_hyphen_ref", func(t *testing.T) {
 		_, err := resolveRefToSHAViaGit("owner", "repo", "-v", "")
-		if err == nil || !strings.Contains(err.Error(), "should not start with '-'") {
-			t.Fatalf("expected hyphen ref error, got %v", err)
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected validation error for hyphenated ref, got %v", err)
 		}
 	})
 
-	t.Run("resolveRefToSHA rejects hyphen ref", func(t *testing.T) {
+	t.Run("resolveRefToSHA_rejects_hyphen_ref", func(t *testing.T) {
 		_, err := resolveRefToSHA("owner", "repo", "-v", "")
-		if err == nil || !strings.Contains(err.Error(), "should not start with '-'") {
-			t.Fatalf("expected hyphen ref error, got %v", err)
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected validation error for hyphenated ref, got %v", err)
 		}
 	})
 
-	t.Run("downloadFileViaGit rejects hyphen ref", func(t *testing.T) {
-		_, err := downloadFileViaGit(context.Background(), "owner", "repo", "path", "-v", "")
-		if err == nil || !strings.Contains(err.Error(), "should not start with '-'") {
-			t.Fatalf("expected hyphen ref error, got %v", err)
+	t.Run("downloadFileViaGit_rejects_hyphen_ref", func(t *testing.T) {
+		_, err := downloadFileViaGit(nil, "owner", "repo", "file.md", "-v", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected validation error for hyphenated ref, got %v", err)
 		}
 	})
 
-	t.Run("downloadFileViaGit rejects hyphen path", func(t *testing.T) {
-		_, err := downloadFileViaGit(context.Background(), "owner", "repo", "-v", "ref", "")
-		if err == nil || !strings.Contains(err.Error(), "should not start with '-'") {
-			t.Fatalf("expected hyphen path error, got %v", err)
+	t.Run("downloadFileViaGit_rejects_hyphen_path", func(t *testing.T) {
+		_, err := downloadFileViaGit(nil, "owner", "repo", "-path", "main", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected validation error for hyphenated path, got %v", err)
 		}
 	})
 
-	t.Run("downloadFileViaGitClone rejects hyphen ref", func(t *testing.T) {
-		_, err := downloadFileViaGitClone("owner", "repo", "path", "-v", "")
-		if err == nil || !strings.Contains(err.Error(), "should not start with '-'") {
-			t.Fatalf("expected hyphen ref error, got %v", err)
+	t.Run("downloadFileViaGitClone_rejects_hyphen_ref", func(t *testing.T) {
+		// Validating hyphenated ref rejection in git checkout path
+		_, err := downloadFileViaGitClone("owner", "repo", "file.md", "-invalid-ref", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected validation error, got %v", err)
 		}
 	})
 
-	t.Run("downloadFileViaGitClone rejects hyphen path", func(t *testing.T) {
-		_, err := downloadFileViaGitClone("owner", "repo", "-v", "ref", "")
-		if err == nil || !strings.Contains(err.Error(), "should not start with '-'") {
-			t.Fatalf("expected hyphen path error, got %v", err)
+	t.Run("downloadFileViaGitClone_rejects_hyphen_path", func(t *testing.T) {
+		_, err := downloadFileViaGitClone("owner", "repo", "-path", "main", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected validation error, got %v", err)
 		}
 	})
 }
