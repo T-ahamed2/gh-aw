@@ -267,7 +267,7 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	// Split repo into owner and name
 	parts := strings.SplitN(repo, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return false, NewValidationError("repository", repo, "invalid repository format", "ensure the repository is in 'owner/repo' format. Example: github/gh-aw")
+		return false, NewValidationError("repository", repo, "invalid repository format", "ensure the repository is in 'owner/repo' format. Expected format: owner/repo. Example: github/gh-aw")
 	}
 	owner, name := parts[0], parts[1]
 
@@ -283,12 +283,12 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	stdOut, _, err := gh.Exec("api", "graphql", "-f", "query="+query,
 		"-f", "owner="+owner, "-f", "name="+name)
 	if err != nil {
-		return false, NewValidationError("safe-outputs.create-discussion", repo, "failed to query discussions status via GraphQL API", "check your network connection and GitHub token permissions")
+		return false, NewValidationError("safe-outputs.create-discussion", repo, "failed to query discussions status via GraphQL API", "check your network connection and GitHub token permissions. Example: check network connection")
 	}
 
 	var response GraphQLResponse
 	if err := json.Unmarshal(stdOut.Bytes(), &response); err != nil {
-		return false, NewValidationError("safe-outputs.create-discussion", repo, "failed to parse GraphQL response when checking discussions", "this is likely an internal API or schema mismatch error")
+		return false, NewValidationError("safe-outputs.create-discussion", repo, "failed to parse GraphQL response when checking discussions", "this is likely an internal API or schema mismatch error. Example: API response malformed")
 	}
 
 	return response.Data.Repository.HasDiscussionsEnabled, nil
@@ -314,14 +314,14 @@ func checkRepositoryHasIssuesUncached(repo string) (bool, error) {
 	// Create REST client
 	client, err := api.DefaultRESTClient()
 	if err != nil {
-		return false, NewValidationError("safe-outputs.create-issue", repo, "failed to create GitHub REST client for issue check", "ensure GitHub CLI is properly configured")
+		return false, NewValidationError("safe-outputs.create-issue", repo, "failed to create GitHub REST client for issue check", "ensure GitHub CLI is properly configured. Example: run 'gh auth login'")
 	}
 
 	// Fetch repository data using REST client
 	var response RepositoryResponse
 	err = client.Get("repos/"+repo, &response)
 	if err != nil {
-		return false, NewValidationError("safe-outputs.create-issue", repo, "failed to query repository issues status via REST API", "check your network connection and GitHub token permissions")
+		return false, NewValidationError("safe-outputs.create-issue", repo, "failed to query repository issues status via REST API", "check your network connection and GitHub token permissions. Example: check network connection")
 	}
 
 	return response.HasIssues, nil

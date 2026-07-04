@@ -128,7 +128,7 @@ func parseActionUsesField(uses string) (*actionRef, error) {
 	// External action: split on "@" to get ref
 	atIdx := strings.LastIndex(uses, "@")
 	if atIdx < 0 {
-		return nil, fmt.Errorf("invalid action ref %q: missing @ref suffix", uses)
+		return nil, NewValidationError("uses", uses, "missing @ref suffix in action reference", "ensure the action is pinned to a tag, branch, or commit SHA. Example: owner/repo@v1")
 	}
 
 	refStr := uses[atIdx+1:]
@@ -137,7 +137,7 @@ func parseActionUsesField(uses string) (*actionRef, error) {
 	// Split repo from subdir: first two path segments are owner/repo
 	parts := strings.SplitN(repoAndPath, "/", 3)
 	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid action ref %q: expected owner/repo format", uses)
+		return nil, NewValidationError("uses", uses, "invalid owner/repo format in action reference", "ensure the reference includes both owner and repository names. Example: owner/repo@v1")
 	}
 
 	repo := parts[0] + "/" + parts[1]
@@ -287,10 +287,12 @@ func fetchRemoteActionYAML(repo, subdir, ref string) (*actionYAMLFile, error) {
 		apiPath := fmt.Sprintf("/repos/%s/contents/%s?ref=%s", repo, contentPath, ref)
 		safeOutputActionsLog.Printf("Fetching action YAML from: %s", apiPath)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		cmd := ExecGHContext(ctx, "api", apiPath, "--jq", ".content")
-		output, err := cmd.Output()
-		cancel()
+		output, err := func() ([]byte, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			cmd := ExecGHContext(ctx, "api", apiPath, "--jq", ".content")
+			return cmd.Output()
+		}()
 		if err != nil {
 			safeOutputActionsLog.Printf("Failed to fetch %s from %s@%s: %v", filename, repo, ref, err)
 			continue
@@ -320,7 +322,7 @@ func fetchRemoteActionYAML(repo, subdir, ref string) (*actionYAMLFile, error) {
 		return actionYAML, nil
 	}
 
-	return nil, fmt.Errorf("could not find action.yml or action.yaml in %s@%s (subdir=%q)", repo, ref, subdir)
+	return nil, fmt.Errorf("could not find action.yml or action.yaml in %s@%s (subdir=%q). Example: check file paths in repository", repo, ref, subdir)
 }
 
 // readLocalActionYAML reads and parses a local action.yml file.
@@ -340,14 +342,14 @@ func readLocalActionYAML(localPath, markdownPath string) (*actionYAMLFile, error
 		return parseActionYAMLContent(content)
 	}
 
-	return nil, fmt.Errorf("could not find action.yml or action.yaml at %s", actionDir)
+	return nil, fmt.Errorf("could not find action.yml or action.yaml at %s. Example: check file exists in directory", actionDir)
 }
 
 // parseActionYAMLContent parses raw action.yml YAML content.
 func parseActionYAMLContent(content []byte) (*actionYAMLFile, error) {
 	var parsed actionYAMLFile
 	if err := yaml.Unmarshal(content, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse action YAML: %w", err)
+		return nil, fmt.Errorf("failed to parse action YAML: %w. Example: check for YAML syntax errors", err)
 	}
 	return &parsed, nil
 }
