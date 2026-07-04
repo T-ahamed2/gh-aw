@@ -82,3 +82,48 @@ func TestListContentsRecursivelyWithDepth_MaxDepthGuard(t *testing.T) {
 		t.Fatalf("expected depth limit error, got %q", err)
 	}
 }
+
+func TestGitArgumentInjectionProtection(t *testing.T) {
+	t.Run("resolveRefToSHAViaGit_rejects_hyphen_ref", func(t *testing.T) {
+		_, err := resolveRefToSHAViaGit("owner", "repo", "-v", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected validation error for hyphenated ref, got %v", err)
+		}
+	})
+
+	t.Run("resolveRefToSHA_rejects_hyphen_ref", func(t *testing.T) {
+		_, err := resolveRefToSHA("owner", "repo", "-v", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected validation error for hyphenated ref, got %v", err)
+		}
+	})
+
+	t.Run("downloadFileViaGit_rejects_hyphen_ref", func(t *testing.T) {
+		_, err := downloadFileViaGit(nil, "owner", "repo", "file.md", "-v", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected validation error for hyphenated ref, got %v", err)
+		}
+	})
+
+	t.Run("downloadFileViaGit_rejects_hyphen_path", func(t *testing.T) {
+		_, err := downloadFileViaGit(nil, "owner", "repo", "-path", "main", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected validation error for hyphenated path, got %v", err)
+		}
+	})
+
+	t.Run("downloadFileViaGitClone_rejects_hyphen_ref", func(t *testing.T) {
+		// Validating hyphenated ref rejection in git checkout path
+		_, err := downloadFileViaGitClone("owner", "repo", "file.md", "-invalid-ref", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected validation error, got %v", err)
+		}
+	})
+
+	t.Run("downloadFileViaGitClone_rejects_hyphen_path", func(t *testing.T) {
+		_, err := downloadFileViaGitClone("owner", "repo", "-path", "main", "")
+		if err == nil || !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Fatalf("expected validation error, got %v", err)
+		}
+	})
+}

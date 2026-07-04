@@ -46,6 +46,9 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 	if ref == "" {
 		return "", errors.New("git fallback requires a non-empty ref")
 	}
+	if strings.HasPrefix(ref, "-") {
+		return "", fmt.Errorf("invalid ref %q: must not start with '-'", ref)
+	}
 
 	githubHost := GetGitHubHostForRepo(owner, repo)
 	if host != "" {
@@ -73,7 +76,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 		return "", fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
-	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
+	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", "--", repoURL, tmpDir)
 	cloneOutput, err := cloneCmd.CombinedOutput()
 	if err != nil {
 		if cleanupErr := os.RemoveAll(tmpDir); cleanupErr != nil {
@@ -458,6 +461,9 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 
 	// Try to resolve the ref using git ls-remote
 	// Format: git ls-remote <repo> <ref>
+	if strings.HasPrefix(ref, "-") {
+		return "", fmt.Errorf("invalid ref %q: must not start with '-'", ref)
+	}
 	cmd := exec.Command("git", "ls-remote", repoURL, ref)
 	output, err := cmd.Output()
 	if err != nil {
@@ -500,6 +506,9 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 
 // resolveRefToSHA resolves a git ref (branch, tag, or SHA) to its commit SHA
 func resolveRefToSHA(owner, repo, ref, host string) (string, error) {
+	if strings.HasPrefix(ref, "-") {
+		return "", fmt.Errorf("invalid ref %q: must not start with '-'", ref)
+	}
 	// If ref is already a full SHA (40 hex characters), return it as-is
 	if len(ref) == 40 && gitutil.IsHexString(ref) {
 		return ref, nil
@@ -598,6 +607,12 @@ func resolveRefToSHAViaPublicAPI(owner, repo, ref string) (string, error) {
 // downloadFileViaGit downloads a file from a Git repository using git commands
 // This is a fallback for when GitHub API authentication fails
 func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string) ([]byte, error) {
+	if strings.HasPrefix(ref, "-") {
+		return nil, fmt.Errorf("invalid ref %q: must not start with '-'", ref)
+	}
+	if strings.HasPrefix(path, "-") {
+		return nil, fmt.Errorf("invalid path %q: must not start with '-'", path)
+	}
 	remoteLog.Printf("Attempting git fallback for %s/%s/%s@%s", owner, repo, path, ref)
 
 	// First, try via raw.githubusercontent.com — no auth required for public repos and
@@ -625,7 +640,7 @@ func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string
 	// git archive command: git archive --remote=<repo> <ref> <path>
 	// #nosec G204 -- repoURL, ref, and path are from workflow import configuration authored by the
 	// developer; exec.Command with separate args (not shell execution) prevents shell injection.
-	cmd := exec.Command("git", "archive", "--remote="+repoURL, ref, path)
+	cmd := exec.Command("git", "archive", "--remote="+repoURL, ref, "--", path)
 	archiveOutput, err := cmd.Output()
 	if err != nil {
 		// If git archive fails, try with git clone + git show as a fallback
@@ -696,6 +711,14 @@ func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error
 	}
 	repoURL := fmt.Sprintf("%s/%s/%s.git", githubHost, owner, repo)
 
+	// Prevent Git argument injection
+	if strings.HasPrefix(ref, "-") {
+		return nil, fmt.Errorf("invalid ref %q: must not start with '-'", ref)
+	}
+	if strings.HasPrefix(path, "-") {
+		return nil, fmt.Errorf("invalid path %q: must not start with '-'", path)
+	}
+
 	// Check if ref is a SHA (40 hex characters)
 	isSHA := len(ref) == 40 && gitutil.IsHexString(ref)
 
@@ -703,11 +726,11 @@ func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error
 	if isSHA {
 		// For SHA refs, we need to clone without --branch and then checkout the specific commit
 		// Clone with minimal depth and no branch specified
-		cloneCmd = exec.Command("git", "clone", "--depth", "1", "--no-single-branch", repoURL, tmpDir)
+		cloneCmd = exec.Command("git", "clone", "--depth", "1", "--no-single-branch", "--", repoURL, tmpDir)
 		if output, err := cloneCmd.CombinedOutput(); err != nil {
 			// Try without --no-single-branch if the first attempt fails
 			remoteLog.Printf("Clone with --no-single-branch failed, trying full clone: %s", string(output))
-			cloneCmd = exec.Command("git", "clone", repoURL, tmpDir)
+			cloneCmd = exec.Command("git", "clone", "--", repoURL, tmpDir)
 			if output, err := cloneCmd.CombinedOutput(); err != nil {
 				return nil, fmt.Errorf("failed to clone repository: %w\nOutput: %s", err, string(output))
 			}
@@ -720,7 +743,7 @@ func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error
 		}
 	} else {
 		// For branch/tag refs, use --branch flag
-		cloneCmd = exec.Command("git", "clone", "--depth", "1", "--branch", ref, repoURL, tmpDir)
+		cloneCmd = exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--", repoURL, tmpDir)
 		if output, err := cloneCmd.CombinedOutput(); err != nil {
 			return nil, fmt.Errorf("failed to clone repository: %w\nOutput: %s", err, string(output))
 		}
@@ -1144,7 +1167,7 @@ func listDirAllFilesViaGitForHost(owner, repo, ref, dirPath, host string) ([]str
 		return nil, err
 	}
 
-	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", dirPath+"/")
+	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", "--", dirPath+"/")
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list dir files: %s", string(lsTreeOutput))
@@ -1283,7 +1306,7 @@ func listDirAllFilesRecursivelyViaGitForHost(owner, repo, ref, dirPath, host str
 
 	// Normalise dirPath so it never has a trailing slash before we append one.
 	cleanDirPath := strings.TrimRight(dirPath, "/")
-	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", cleanDirPath+"/")
+	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", "--", cleanDirPath+"/")
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list dir files recursively: %s", string(lsTreeOutput))
@@ -1404,7 +1427,7 @@ func listDirSubdirsViaGitForHost(owner, repo, ref, dirPath, host string) ([]stri
 	}
 
 	// Use ls-tree -d to list only direct subdirectory entries.
-	lsTreeDirsCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "--name-only", "-d", "HEAD", dirPath+"/")
+	lsTreeDirsCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "--name-only", "-d", "HEAD", "--", dirPath+"/")
 	lsTreeDirsOutput, err := lsTreeDirsCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list tree subdirs: %s", string(lsTreeDirsOutput))
@@ -1475,7 +1498,7 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 
 	// Do a minimal clone using filter=blob:none for faster cloning (metadata only, no blobs)
 	// Use --depth=1 for shallow clone and --no-checkout to skip checkout initially
-	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
+	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", "--", repoURL, tmpDir)
 	cloneOutput, err := cloneCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
@@ -1483,7 +1506,7 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 	}
 
 	// Use git ls-tree to list files in the specified workflows directory
-	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", workflowPath+"/")
+	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", "--", workflowPath+"/")
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list files: %s", string(lsTreeOutput))
