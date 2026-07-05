@@ -1,0 +1,3 @@
+## 2025-07-05 - [Optimized Fuzzy Matching]
+**Learning:** In Go, Levenshtein distance performance is heavily gated by allocations in the DP table. Swapping inputs to ensure the shorter string drives the table size and using a stack-allocated buffer ([64]int) for common string lengths (<65 bytes) significantly reduces heap pressure and improves throughput. Additionally, early-exit based on string length difference is a zero-cost way to prune most candidates in "did you mean" scenarios.
+**Action:** Always prefer stack-allocated buffers for small slices in performance-critical loops and look for geometric pruning opportunities before executing expensive algorithms.
