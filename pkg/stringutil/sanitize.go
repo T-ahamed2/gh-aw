@@ -300,13 +300,10 @@ func SanitizeForFilename(slug string) string {
 	if slug == "" {
 		return "clone-mode"
 	}
-	var sb strings.Builder
-	for _, r := range strings.ReplaceAll(slug, "/", "-") {
+	return strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
-			sb.WriteRune(r)
-		} else {
-			sb.WriteRune('-')
+			return r
 		}
-	}
-	return sb.String()
+		return '-'
+	}, slug)
 }
