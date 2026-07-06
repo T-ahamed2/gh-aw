@@ -3,7 +3,6 @@ package workflow
 import (
 	"context"
 	"fmt"
-	"maps"
 	"strings"
 	"time"
 
@@ -19,7 +18,7 @@ var resolverLog = logger.New("workflow:action_resolver")
 type ActionResolver struct {
 	cache             *ActionCache
 	failedResolutions map[string]bool // tracks failed resolution attempts in current run (key: "repo@version")
-	usedCacheKeys     map[string]bool // tracks cache keys that were hit or newly set during this run
+	usedCacheKeys     map[string]struct{} // tracks cache keys that were hit or newly set during this run
 }
 
 // NewActionResolver creates a new action resolver
@@ -27,23 +26,25 @@ func NewActionResolver(cache *ActionCache) *ActionResolver {
 	return &ActionResolver{
 		cache:             cache,
 		failedResolutions: make(map[string]bool),
-		usedCacheKeys:     make(map[string]bool),
+		usedCacheKeys:     make(map[string]struct{}),
 	}
 }
 
 // GetUsedCacheKeys returns the set of cache keys (in "repo@version" format) that
 // were successfully resolved from the cache or written to the cache during this run.
 // These represent the action pins actually referenced by the compiled workflows.
-func (r *ActionResolver) GetUsedCacheKeys() map[string]bool {
-	keys := make(map[string]bool, len(r.usedCacheKeys))
-	maps.Copy(keys, r.usedCacheKeys)
+func (r *ActionResolver) GetUsedCacheKeys() map[string]struct{} {
+	keys := make(map[string]struct{}, len(r.usedCacheKeys))
+	for k := range r.usedCacheKeys {
+		keys[k] = struct{}{}
+	}
 	return keys
 }
 
 // MarkCacheKeyAsUsed explicitly marks a cache key as used during this compilation run.
 // This is useful for compiler-generated actions that aren't resolved through ResolveSHA.
 func (r *ActionResolver) MarkCacheKeyAsUsed(cacheKey string) {
-	r.usedCacheKeys[cacheKey] = true
+	r.usedCacheKeys[cacheKey] = struct{}{}
 	resolverLog.Printf("Marked cache key as used: %s", cacheKey)
 }
 
@@ -76,8 +77,8 @@ func (r *ActionResolver) MarkCompilerGeneratedActionsAsUsed() {
 	marked := 0
 	for _, repo := range compilerGeneratedRepos {
 		if cacheKey, _, found := r.cache.FindAnyEntryForRepo(repo); found {
-			if !r.usedCacheKeys[cacheKey] {
-				r.usedCacheKeys[cacheKey] = true
+			if _, exists := r.usedCacheKeys[cacheKey]; !exists {
+				r.usedCacheKeys[cacheKey] = struct{}{}
 				marked++
 				resolverLog.Printf("Marked compiler-generated action as used: %s", cacheKey)
 			}
@@ -96,7 +97,7 @@ func (r *ActionResolver) ResolveSHA(ctx context.Context, repo, version string) (
 	// Create a cache key for tracking failed resolutions and cache lookups.
 	// Computed once here and reused below to avoid duplicate allocation.
 	cacheKey := formatActionCacheKey(repo, version)
-	r.usedCacheKeys[cacheKey] = true
+	r.usedCacheKeys[cacheKey] = struct{}{}
 
 	// Check if we've already failed to resolve this action in this run
 	if r.failedResolutions[cacheKey] {
@@ -226,17 +227,23 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 		// Each peel gets its own fresh 30-second timeout derived from the original
 		// caller context (ctx), not from callCtx, so we don't accidentally shrink
 		// the budget for subsequent peels.
-		peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
-		cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
-		ForceGHHostEnv(cmd2, "github.com")
-		output2, peelErr := cmd2.Output()
-		peelCancel()
-		if peelErr != nil {
-			return "", fmt.Errorf("failed to peel annotated tag %s@%s: %w", repo, version, peelErr)
-		}
-		sha, objType, err = ParseTagRefTSV(string(output2))
+		err = func() error {
+			peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
+			defer peelCancel()
+			cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
+			ForceGHHostEnv(cmd2, "github.com")
+			output2, peelErr := cmd2.Output()
+			if peelErr != nil {
+				return fmt.Errorf("failed to peel annotated tag %s@%s: %w", repo, version, peelErr)
+			}
+			sha, objType, err = ParseTagRefTSV(string(output2))
+			if err != nil {
+				return fmt.Errorf("failed to parse peeled tag API response for %s@%s: %w", repo, version, err)
+			}
+			return nil
+		}()
 		if err != nil {
-			return "", fmt.Errorf("failed to parse peeled tag API response for %s@%s: %w", repo, version, err)
+			return "", err
 		}
 	}
 	resolverLog.Printf("Resolved %s@%s to %s SHA: %s", repo, version, objType, sha)

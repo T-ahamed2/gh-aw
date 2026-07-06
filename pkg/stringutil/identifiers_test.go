@@ -302,3 +302,10 @@ func TestRoundTripConversions(t *testing.T) {
 		}
 	})
 }
+
+func BenchmarkNormalizeSafeOutputIdentifier_NoChange(b *testing.B) {
+	identifier := "create_pull_request_review_comment"
+	for range b.N {
+		NormalizeSafeOutputIdentifier(identifier)
+	}
+}

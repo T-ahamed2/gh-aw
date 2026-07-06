@@ -898,9 +898,9 @@ func TestPruneOrphanedEntries(t *testing.T) {
 	}
 
 	// Only v1.9.1 and checkout are referenced by compiled workflows.
-	referenced := map[string]bool{
-		"microsoft/apm-action@v1.9.1": true,
-		"actions/checkout@v4":         true,
+	referenced := map[string]struct{}{
+		"microsoft/apm-action@v1.9.1": {},
+		"actions/checkout@v4":         {},
 	}
 	pruned := cache.PruneOrphanedEntries(referenced)
 
@@ -931,7 +931,7 @@ func TestPruneOrphanedEntries_EmptyReferenced(t *testing.T) {
 	cache.Set("actions/checkout", "v4", "sha1")
 	cache.Set("actions/setup-node", "v4", "sha2")
 
-	pruned := cache.PruneOrphanedEntries(map[string]bool{})
+	pruned := cache.PruneOrphanedEntries(map[string]struct{}{})
 
 	if pruned != 0 {
 		t.Errorf("Expected 0 pruned entries (empty referenced set is a no-op), got %d", pruned)
@@ -950,9 +950,9 @@ func TestPruneOrphanedEntries_NoneOrphaned(t *testing.T) {
 	cache.Set("actions/checkout", "v4", "sha1")
 	cache.Set("actions/setup-node", "v4", "sha2")
 
-	referenced := map[string]bool{
-		"actions/checkout@v4":   true,
-		"actions/setup-node@v4": true,
+	referenced := map[string]struct{}{
+		"actions/checkout@v4":   {},
+		"actions/setup-node@v4": {},
 	}
 	pruned := cache.PruneOrphanedEntries(referenced)
 
@@ -975,8 +975,8 @@ func TestPruneOrphanedEntries_AllOrphaned(t *testing.T) {
 	cache.Set("cli/gh-extension-precompile", "v2.1.0", "sha2")
 
 	// Referenced set is non-empty but contains neither of the cached entries.
-	referenced := map[string]bool{
-		"some/other-action@v1": true,
+	referenced := map[string]struct{}{
+		"some/other-action@v1": {},
 	}
 	pruned := cache.PruneOrphanedEntries(referenced)
 
@@ -1009,8 +1009,8 @@ func TestPruneOrphanedEntries_PreservesCompilerGenerated(t *testing.T) {
 	}
 
 	// Only reference microsoft/apm-action, but not the compiler-generated or runtime-managed ones
-	referenced := map[string]bool{
-		"microsoft/apm-action@v1.7.2": true,
+	referenced := map[string]struct{}{
+		"microsoft/apm-action@v1.7.2": {},
 	}
 	pruned := cache.PruneOrphanedEntries(referenced)
 

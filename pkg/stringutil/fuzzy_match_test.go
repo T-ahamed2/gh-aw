@@ -151,3 +151,19 @@ func TestLevenshteinDistance(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkLevenshteinDistance(b *testing.B) {
+	s1 := "copiliot"
+	s2 := "copilot"
+	for range b.N {
+		LevenshteinDistance(s1, s2)
+	}
+}
+
+func BenchmarkFindClosestMatches(b *testing.B) {
+	target := "copiliot"
+	candidates := []string{"copilot", "claude", "codex", "custom", "workflow", "action", "github", "runner"}
+	for range b.N {
+		FindClosestMatches(target, candidates, 3)
+	}
+}
