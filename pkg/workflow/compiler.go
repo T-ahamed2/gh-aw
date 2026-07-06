@@ -229,7 +229,9 @@ func (c *Compiler) generateAndValidateYAML(workflowData *WorkflowData, markdownP
 		// Validate repository features (discussions, issues)
 		workflowLog.Print("Validating repository features")
 		if err := c.validateRepositoryFeatures(workflowData); err != nil {
-			return "", nil, nil, formatCompilerError(markdownPath, "error", fmt.Sprintf("repository feature validation failed: %v", err), err)
+			// Downgrade repository feature validation errors to warnings for cross-repo compilation
+			fmt.Fprintln(os.Stderr, formatCompilerMessage(markdownPath, "warning", fmt.Sprintf("repository feature validation failed: %v", err)))
+			c.IncrementWarningCount()
 		}
 	} else if c.verbose {
 		fmt.Fprintln(os.Stderr, console.FormatWarningMessage("Schema validation available but skipped (use SetSkipValidation(false) to enable)"))

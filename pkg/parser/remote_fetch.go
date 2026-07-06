@@ -70,7 +70,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp directory: %w", err)
+		return "", fmt.Errorf("create temp directory: %w (requires writable /tmp)", err)
 	}
 
 	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
@@ -80,7 +80,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 			remoteLog.Printf("Failed to clean up temp directory %q: %v", tmpDir, cleanupErr)
 		}
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return "", fmt.Errorf("failed to clone repository for %s/%s@%s: %w", owner, repo, ref, err)
+		return "", fmt.Errorf("clone repository for %s/%s@%s: %w (ensure repository exists and ref is correct)", owner, repo, ref, err)
 	}
 
 	existingDir, found := func() (string, bool) {
@@ -277,7 +277,7 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		remoteLog.Printf("Local file not found: %s", fullPath)
 		// Return a simple error that will be wrapped with source location by the caller
-		return "", fmt.Errorf("file not found: %s", fullPath)
+		return "", fmt.Errorf("file not found at %s (expected path within %s)", fullPath, securityBase)
 	}
 	remoteLog.Printf("Resolved to local file: %s", fullPath)
 	return fullPath, nil
@@ -359,7 +359,7 @@ func downloadIncludeFromWorkflowSpec(spec string, cache *ImportCache) (string, e
 	remoteLog.Printf("Fetching file from GitHub: %s/%s/%s@%s", owner, repo, filePath, ref)
 	content, err := downloadFileFromGitHub(owner, repo, filePath, ref)
 	if err != nil {
-		return "", fmt.Errorf("failed to download include from %s: %w", spec, err)
+		return "", fmt.Errorf("download include from %s: %w (verify repository permissions and file path)", spec, err)
 	}
 	remoteLog.Printf("Successfully downloaded file: size=%d bytes", len(content))
 
@@ -391,7 +391,7 @@ func parseWorkflowSpecParts(spec string) (string, string, string, string, error)
 	slashParts := strings.Split(pathPart, "/")
 	if len(slashParts) < 3 {
 		remoteLog.Printf("Invalid workflowspec format: %s", spec)
-		return "", "", "", "", errors.New("invalid workflowspec: must be owner/repo/path[@ref]")
+		return "", "", "", "", errors.New("invalid workflowspec: must be owner/repo/path[@ref]. Example: github/gh-aw/.github/workflows/main.md@main")
 	}
 	return slashParts[0], slashParts[1], strings.Join(slashParts[2:], "/"), ref, nil
 }
