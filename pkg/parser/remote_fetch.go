@@ -82,7 +82,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temporary directory for git clone: %w; check system temp directory permissions and disk space", err)
+		return "", fmt.Errorf("unable to create temporary directory for git clone: %w; the system requires a writable temp directory with sufficient disk space. Example: check /tmp permissions", err)
 	}
 
 	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
@@ -92,7 +92,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 			remoteLog.Printf("Failed to clean up temp directory %q: %v", tmpDir, cleanupErr)
 		}
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return "", fmt.Errorf("failed to clone repository for %s/%s@%s: %w; ensure the repository exists and is accessible. Example: \"github/gh-aw@main\"", owner, repo, ref, err)
+		return "", fmt.Errorf("unable to clone repository for %s/%s@%s: %w; the repository must be public or have valid credentials. Example: \"github/gh-aw@main\"", owner, repo, ref, err)
 	}
 
 	existingDir, found := func() (string, bool) {
@@ -378,7 +378,7 @@ func downloadIncludeFromWorkflowSpec(spec string, cache *ImportCache) (string, e
 	remoteLog.Printf("Fetching file from GitHub: %s/%s/%s@%s", owner, repo, filePath, ref)
 	content, err := downloadFileFromGitHub(owner, repo, filePath, ref)
 	if err != nil {
-		return "", fmt.Errorf("failed to download include from %s: %w; check the workflow specification format and network connectivity. Example: \"owner/repo/path@ref\"", spec, err)
+		return "", fmt.Errorf("unable to download include from %s: %w; the workflow specification must be valid and the network reachable. Example: \"owner/repo/path@ref\"", spec, err)
 	}
 	remoteLog.Printf("Successfully downloaded file: size=%d bytes", len(content))
 
@@ -410,7 +410,7 @@ func parseWorkflowSpecParts(spec string) (string, string, string, string, error)
 	slashParts := strings.Split(pathPart, "/")
 	if len(slashParts) < 3 {
 		remoteLog.Printf("Invalid workflowspec format: %s", spec)
-		return "", "", "", "", errors.New("invalid workflowspec: must be owner/repo/path[@ref]")
+		return "", "", "", "", errors.New("invalid workflowspec; the path must follow the owner/repo/path@ref format. Example: \"github/gh-aw/.github/workflows/main.md@main\"")
 	}
 	return slashParts[0], slashParts[1], strings.Join(slashParts[2:], "/"), ref, nil
 }
@@ -430,7 +430,7 @@ func resolveWorkflowSpecSHAForCache(owner, repo, ref string, cache *ImportCache)
 func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 	tempFile, err := os.CreateTemp("", "gh-aw-include-*.md")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %w", err)
+		return "", fmt.Errorf("unable to create temporary file for include: %w; the system requires a writable temp directory. Example: check /tmp permissions", err)
 	}
 	cleanupOnError := true
 	fileClosed := false
@@ -451,11 +451,11 @@ func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 			remoteLog.Printf("Warning: failed to close temp file during cleanup: %v", closeErr)
 		}
 		fileClosed = true
-		return "", fmt.Errorf("failed to write temp file: %w", err)
+		return "", fmt.Errorf("unable to write content to temporary file: %w; the system requires sufficient disk space. Example: check disk usage with 'df -h'", err)
 	}
 	if err := tempFile.Close(); err != nil {
 		fileClosed = true
-		return "", fmt.Errorf("failed to close temp file: %w", err)
+		return "", fmt.Errorf("unable to close temporary file: %w; the system should be responsive for file operations. Example: verify disk health", err)
 	}
 	cleanupOnError = false
 	fileClosed = true
@@ -761,7 +761,7 @@ func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error
 	// Create a temporary directory for the shallow clone
 	tmpDir, err := os.MkdirTemp("", "gh-aw-git-clone-*")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temporary directory for git clone: %w; check system temp directory permissions and disk space", err)
+		return nil, fmt.Errorf("unable to create temporary directory for git clone: %w; the system requires a writable temp directory with sufficient disk space. Example: verify /tmp permissions", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -1610,7 +1610,7 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 	// Create a temporary directory for minimal clone
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temporary directory for git clone: %w; check system temp directory permissions and disk space", err)
+		return nil, fmt.Errorf("unable to create temporary directory for git clone: %w; the system requires a writable temp directory with sufficient disk space. Example: verify /tmp permissions", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -1620,7 +1620,7 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 	cloneOutput, err := cloneCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return nil, fmt.Errorf("failed to clone repository for %s/%s@%s: %w; ensure the repository exists and is accessible. Example: \"github/gh-aw@main\"", owner, repo, ref, err)
+		return nil, fmt.Errorf("unable to clone repository for %s/%s@%s: %w; the repository should be public or have valid credentials. Example: \"github/gh-aw@main\"", owner, repo, ref, err)
 	}
 
 	// Use git ls-tree to list files in the specified workflows directory
