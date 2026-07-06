@@ -42,6 +42,18 @@ var gitListCloneCache = struct {
 }
 
 func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
+	if err := validateGitArg(owner); err != nil {
+		return "", err
+	}
+	if err := validateGitArg(repo); err != nil {
+		return "", err
+	}
+	if err := validateGitArg(ref); err != nil {
+		return "", err
+	}
+	if err := validateGitArg(host); err != nil {
+		return "", err
+	}
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return "", errors.New("git fallback requires a non-empty ref")
@@ -70,7 +82,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp directory: %w", err)
+		return "", fmt.Errorf("unable to create temporary directory for git clone: %w; the system requires a writable temp directory with sufficient disk space. Example: check /tmp permissions", err)
 	}
 
 	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
@@ -80,7 +92,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 			remoteLog.Printf("Failed to clean up temp directory %q: %v", tmpDir, cleanupErr)
 		}
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return "", fmt.Errorf("failed to clone repository for %s/%s@%s: %w", owner, repo, ref, err)
+		return "", fmt.Errorf("unable to clone repository for %s/%s@%s: %w; the repository must be public or have valid credentials. Example: \"github/gh-aw@main\"", owner, repo, ref, err)
 	}
 
 	existingDir, found := func() (string, bool) {
@@ -261,7 +273,7 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if stripped, ok := strings.CutPrefix(filepath.ToSlash(filePath), "/"); ok {
 		if !strings.HasPrefix(stripped, constants.GithubDir) && !strings.HasPrefix(stripped, ".agents/") {
 			remoteLog.Printf("Security: Path not within .github or .agents: %s", filePath)
-			return "", fmt.Errorf("security: path %s must be within .github or .agents folder", filePath)
+			return "", fmt.Errorf("invalid path %s; security policy requires paths to be within .github or .agents folders. Example: \".github/workflows/main.md\"", filePath)
 		}
 	}
 	fullPath := filepath.Join(resolveBase, filePath)
@@ -271,7 +283,7 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if err != nil || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) || filepath.IsAbs(relativePath) {
 		allowedFolder := filepath.Base(normalizedSecurityBase)
 		remoteLog.Printf("Security: Path escapes allowed folder: %s (resolves to: %s)", filePath, relativePath)
-		return "", fmt.Errorf("security: path %s must be within %s folder (resolves to: %s)", filePath, allowedFolder, relativePath)
+		return "", fmt.Errorf("invalid path %s; security policy requires paths to stay within the %s folder. Example: \"shared/utils.md\"", filePath, allowedFolder)
 	}
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
@@ -338,6 +350,13 @@ func isWorkflowSpec(path string) bool {
 	return IsWorkflowSpec(path)
 }
 
+func validateGitArg(arg string) error {
+	if strings.HasPrefix(arg, "-") {
+		return fmt.Errorf("invalid git argument %q; arguments must not start with a hyphen to prevent flag injection. Example: use \"main\" instead of \"-main\"", arg)
+	}
+	return nil
+}
+
 // downloadIncludeFromWorkflowSpec downloads an include file from GitHub using workflowspec
 // It first checks the cache, and only downloads if not cached
 func downloadIncludeFromWorkflowSpec(spec string, cache *ImportCache) (string, error) {
@@ -359,7 +378,7 @@ func downloadIncludeFromWorkflowSpec(spec string, cache *ImportCache) (string, e
 	remoteLog.Printf("Fetching file from GitHub: %s/%s/%s@%s", owner, repo, filePath, ref)
 	content, err := downloadFileFromGitHub(owner, repo, filePath, ref)
 	if err != nil {
-		return "", fmt.Errorf("failed to download include from %s: %w", spec, err)
+		return "", fmt.Errorf("unable to download include from %s: %w; the workflow specification must be valid and the network reachable. Example: \"owner/repo/path@ref\"", spec, err)
 	}
 	remoteLog.Printf("Successfully downloaded file: size=%d bytes", len(content))
 
@@ -391,7 +410,7 @@ func parseWorkflowSpecParts(spec string) (string, string, string, string, error)
 	slashParts := strings.Split(pathPart, "/")
 	if len(slashParts) < 3 {
 		remoteLog.Printf("Invalid workflowspec format: %s", spec)
-		return "", "", "", "", errors.New("invalid workflowspec: must be owner/repo/path[@ref]")
+		return "", "", "", "", errors.New("invalid workflowspec; the path must follow the owner/repo/path@ref format. Example: \"github/gh-aw/.github/workflows/main.md@main\"")
 	}
 	return slashParts[0], slashParts[1], strings.Join(slashParts[2:], "/"), ref, nil
 }
@@ -411,7 +430,7 @@ func resolveWorkflowSpecSHAForCache(owner, repo, ref string, cache *ImportCache)
 func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 	tempFile, err := os.CreateTemp("", "gh-aw-include-*.md")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %w", err)
+		return "", fmt.Errorf("unable to create temporary file for include: %w; the system requires a writable temp directory. Example: check /tmp permissions", err)
 	}
 	cleanupOnError := true
 	fileClosed := false
@@ -432,11 +451,11 @@ func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 			remoteLog.Printf("Warning: failed to close temp file during cleanup: %v", closeErr)
 		}
 		fileClosed = true
-		return "", fmt.Errorf("failed to write temp file: %w", err)
+		return "", fmt.Errorf("unable to write content to temporary file: %w; the system requires sufficient disk space. Example: check disk usage with 'df -h'", err)
 	}
 	if err := tempFile.Close(); err != nil {
 		fileClosed = true
-		return "", fmt.Errorf("failed to close temp file: %w", err)
+		return "", fmt.Errorf("unable to close temporary file: %w; the system should be responsive for file operations. Example: verify disk health", err)
 	}
 	cleanupOnError = false
 	fileClosed = true
@@ -447,6 +466,19 @@ func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 // This is a fallback for when GitHub API authentication fails
 func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 	remoteLog.Printf("Attempting git ls-remote fallback for ref resolution: %s/%s@%s", owner, repo, ref)
+
+	if err := validateGitArg(owner); err != nil {
+		return "", err
+	}
+	if err := validateGitArg(repo); err != nil {
+		return "", err
+	}
+	if err := validateGitArg(ref); err != nil {
+		return "", err
+	}
+	if err := validateGitArg(host); err != nil {
+		return "", err
+	}
 
 	var githubHost string
 	if host != "" {
@@ -471,27 +503,27 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 		}
 
 		if err != nil {
-			return "", fmt.Errorf("failed to resolve ref via git ls-remote: %w", err)
+			return "", fmt.Errorf("unable to resolve ref via git ls-remote: %w; the repository requires public access or valid credentials. Example: \"main\"", err)
 		}
 	}
 
 	// Parse the output: "<sha> <ref>"
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	if len(lines) == 0 || lines[0] == "" {
-		return "", fmt.Errorf("no matching ref found for %s", ref)
+		return "", fmt.Errorf("no matching ref found for %s; check if the branch or tag exists. Example: \"main\"", ref)
 	}
 
 	// Extract SHA from the first line
 	parts := strings.Fields(lines[0])
 	if len(parts) < 1 {
-		return "", errors.New("invalid git ls-remote output format")
+		return "", errors.New("invalid git ls-remote output format; the command should return a SHA followed by a ref name. Example: \"abc123... refs/heads/main\"")
 	}
 
 	sha := parts[0]
 
 	// Validate it's a valid SHA
 	if len(sha) != 40 || !gitutil.IsHexString(sha) {
-		return "", fmt.Errorf("invalid SHA format from git ls-remote: %s", sha)
+		return "", fmt.Errorf("invalid SHA format from git ls-remote %q; the output must be a 40-character hexadecimal string. Example: \"abc123...\"", sha)
 	}
 
 	remoteLog.Printf("Successfully resolved ref via git ls-remote: %s/%s@%s -> %s", owner, repo, ref, sha)
@@ -500,6 +532,19 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 
 // resolveRefToSHA resolves a git ref (branch, tag, or SHA) to its commit SHA
 func resolveRefToSHA(owner, repo, ref, host string) (string, error) {
+	if err := validateGitArg(owner); err != nil {
+		return "", err
+	}
+	if err := validateGitArg(repo); err != nil {
+		return "", err
+	}
+	if err := validateGitArg(ref); err != nil {
+		return "", err
+	}
+	if err := validateGitArg(host); err != nil {
+		return "", err
+	}
+
 	// If ref is already a full SHA (40 hex characters), return it as-is
 	if len(ref) == 40 && gitutil.IsHexString(ref) {
 		return ref, nil
@@ -529,22 +574,22 @@ func resolveRefToSHA(owner, repo, ref, host string) (string, error) {
 					remoteLog.Printf("Git fallback also failed, attempting unauthenticated API for %s/%s@%s", owner, repo, ref)
 					return resolveRefToSHAViaPublicAPI(owner, repo, ref)
 				}
-				return "", fmt.Errorf("failed to resolve ref via GitHub API (auth error) and git ls-remote: API error: %w, Git error: %w", err, gitErr)
+				return "", fmt.Errorf("unable to resolve ref via GitHub API and git ls-remote: API error: %w, Git error: %w; the repository must be public or have valid credentials. Example: \"owner/repo@ref\"", err, gitErr)
 			}
 			return sha, nil
 		}
 
-		return "", fmt.Errorf("failed to resolve ref %s to SHA for %s/%s: %s: %w", ref, owner, repo, strings.TrimSpace(outputStr), err)
+		return "", fmt.Errorf("unable to resolve ref %s to SHA for %s/%s: %s: %w; check the ref name and repository access. Example: \"main\"", ref, owner, repo, strings.TrimSpace(outputStr), err)
 	}
 
 	sha := strings.TrimSpace(stdout.String())
 	if sha == "" {
-		return "", fmt.Errorf("empty SHA returned for ref %s in %s/%s", ref, owner, repo)
+		return "", fmt.Errorf("empty SHA returned for ref %s in %s/%s; the ref might not point to a commit. Example: check if the branch has any commits", ref, owner, repo)
 	}
 
 	// Validate it's a valid SHA (40 hex characters)
 	if len(sha) != 40 || !gitutil.IsHexString(sha) {
-		return "", fmt.Errorf("invalid SHA format returned: %s", sha)
+		return "", fmt.Errorf("invalid SHA format returned %q; the API should return a 40-character hexadecimal string. Example: \"abc123...\"", sha)
 	}
 
 	return sha, nil
@@ -580,17 +625,17 @@ func resolveRefToSHAViaPublicAPI(owner, repo, ref string) (string, error) {
 		return "", err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unauthenticated public API failed for %s/%s@%s: HTTP %d: %s", owner, repo, ref, resp.StatusCode, strings.TrimSpace(string(body)))
+		return "", fmt.Errorf("unauthenticated public API request failed for %s/%s@%s: HTTP %d: %s; the repository requires authenticated access. Example: use an OAuth token", owner, repo, ref, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var result struct {
 		SHA string `json:"sha"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("failed to parse commit response: %w", err)
+		return "", fmt.Errorf("unable to parse commit response: %w; the API response structure might have changed. Example: check GitHub API documentation", err)
 	}
 	if result.SHA == "" || len(result.SHA) != 40 || !gitutil.IsHexString(result.SHA) {
-		return "", fmt.Errorf("invalid SHA returned from public API: %q", result.SHA)
+		return "", fmt.Errorf("invalid SHA returned from public API %q; the output should be a 40-character hexadecimal string. Example: \"abc123...\"", result.SHA)
 	}
 	return result.SHA, nil
 }
@@ -599,6 +644,22 @@ func resolveRefToSHAViaPublicAPI(owner, repo, ref string) (string, error) {
 // This is a fallback for when GitHub API authentication fails
 func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string) ([]byte, error) {
 	remoteLog.Printf("Attempting git fallback for %s/%s/%s@%s", owner, repo, path, ref)
+
+	if err := validateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(path); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(host); err != nil {
+		return nil, err
+	}
 
 	// First, try via raw.githubusercontent.com — no auth required for public repos and
 	// no dependency on git being installed.
@@ -681,10 +742,26 @@ func downloadFileViaRawURL(ctx context.Context, owner, repo, filePath, ref strin
 func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error) {
 	remoteLog.Printf("Attempting git clone fallback for %s/%s/%s@%s", owner, repo, path, ref)
 
+	if err := validateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(path); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(host); err != nil {
+		return nil, err
+	}
+
 	// Create a temporary directory for the shallow clone
 	tmpDir, err := os.MkdirTemp("", "gh-aw-git-clone-*")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp directory: %w", err)
+		return nil, fmt.Errorf("unable to create temporary directory for git clone: %w; the system requires a writable temp directory with sufficient disk space. Example: verify /tmp permissions", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -758,7 +835,7 @@ func checkRemoteSymlink(client *api.RESTClient, owner, repo, dirPath, ref string
 
 	// If the response is an array, this is a directory listing — not a symlink
 	trimmed := strings.TrimSpace(string(raw))
-	if len(trimmed) > 0 && trimmed[0] == '[' {
+	if trimmed != "" && trimmed[0] == '[' {
 		remoteLog.Printf("Path component %s is a directory (not a symlink)", dirPath)
 		return "", false, nil
 	}
@@ -1139,6 +1216,22 @@ func listDirAllFilesForHost(owner, repo, ref, dirPath, host string) ([]string, e
 func listDirAllFilesViaGitForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
 	remoteLog.Printf("Git fallback for listing all dir files: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
+	if err := validateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(host); err != nil {
+		return nil, err
+	}
+
 	tmpDir, err := getOrCreateListRepoClone(owner, repo, ref, host)
 	if err != nil {
 		return nil, err
@@ -1276,6 +1369,22 @@ func listContentsRecursivelyWithDepth(client *api.RESTClient, owner, repo, ref, 
 func listDirAllFilesRecursivelyViaGitForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
 	remoteLog.Printf("Git fallback for listing all dir files recursively: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
+	if err := validateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(host); err != nil {
+		return nil, err
+	}
+
 	tmpDir, err := getOrCreateListRepoClone(owner, repo, ref, host)
 	if err != nil {
 		return nil, err
@@ -1398,6 +1507,22 @@ func listDirSubdirsForHost(owner, repo, ref, dirPath, host string) ([]string, er
 func listDirSubdirsViaGitForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
 	remoteLog.Printf("Git fallback for listing subdirs: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
+	if err := validateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(host); err != nil {
+		return nil, err
+	}
+
 	tmpDir, err := getOrCreateListRepoClone(owner, repo, ref, host)
 	if err != nil {
 		return nil, err
@@ -1460,6 +1585,22 @@ func listDirSubdirsViaPublicAPI(owner, repo, ref, dirPath string) ([]string, err
 func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string) ([]string, error) {
 	remoteLog.Printf("Attempting git fallback for listing workflow files: %s/%s@%s (path: %s)", owner, repo, ref, workflowPath)
 
+	if err := validateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(workflowPath); err != nil {
+		return nil, err
+	}
+	if err := validateGitArg(host); err != nil {
+		return nil, err
+	}
+
 	githubHost := GetGitHubHostForRepo(owner, repo)
 	if host != "" {
 		githubHost = stringutil.NormalizeGitHubHostURL(host)
@@ -1469,7 +1610,7 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 	// Create a temporary directory for minimal clone
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp directory: %w", err)
+		return nil, fmt.Errorf("unable to create temporary directory for git clone: %w; the system requires a writable temp directory with sufficient disk space. Example: verify /tmp permissions", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -1479,7 +1620,7 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 	cloneOutput, err := cloneCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return nil, fmt.Errorf("failed to clone repository for %s/%s@%s: %w", owner, repo, ref, err)
+		return nil, fmt.Errorf("unable to clone repository for %s/%s@%s: %w; the repository should be public or have valid credentials. Example: \"github/gh-aw@main\"", owner, repo, ref, err)
 	}
 
 	// Use git ls-tree to list files in the specified workflows directory
