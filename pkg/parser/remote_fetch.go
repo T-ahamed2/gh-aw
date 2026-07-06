@@ -503,27 +503,27 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 		}
 
 		if err != nil {
-			return "", fmt.Errorf("failed to resolve ref via git ls-remote: %w", err)
+			return "", fmt.Errorf("unable to resolve ref via git ls-remote: %w; the repository requires public access or valid credentials. Example: \"main\"", err)
 		}
 	}
 
 	// Parse the output: "<sha> <ref>"
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	if len(lines) == 0 || lines[0] == "" {
-		return "", fmt.Errorf("no matching ref found for %s", ref)
+		return "", fmt.Errorf("no matching ref found for %s; check if the branch or tag exists. Example: \"main\"", ref)
 	}
 
 	// Extract SHA from the first line
 	parts := strings.Fields(lines[0])
 	if len(parts) < 1 {
-		return "", errors.New("invalid git ls-remote output format")
+		return "", errors.New("invalid git ls-remote output format; the command should return a SHA followed by a ref name. Example: \"abc123... refs/heads/main\"")
 	}
 
 	sha := parts[0]
 
 	// Validate it's a valid SHA
 	if len(sha) != 40 || !gitutil.IsHexString(sha) {
-		return "", fmt.Errorf("invalid SHA format from git ls-remote: %s", sha)
+		return "", fmt.Errorf("invalid SHA format from git ls-remote %q; the output must be a 40-character hexadecimal string. Example: \"abc123...\"", sha)
 	}
 
 	remoteLog.Printf("Successfully resolved ref via git ls-remote: %s/%s@%s -> %s", owner, repo, ref, sha)
@@ -574,22 +574,22 @@ func resolveRefToSHA(owner, repo, ref, host string) (string, error) {
 					remoteLog.Printf("Git fallback also failed, attempting unauthenticated API for %s/%s@%s", owner, repo, ref)
 					return resolveRefToSHAViaPublicAPI(owner, repo, ref)
 				}
-				return "", fmt.Errorf("failed to resolve ref via GitHub API (auth error) and git ls-remote: API error: %w, Git error: %w", err, gitErr)
+				return "", fmt.Errorf("unable to resolve ref via GitHub API and git ls-remote: API error: %w, Git error: %w; the repository must be public or have valid credentials. Example: \"owner/repo@ref\"", err, gitErr)
 			}
 			return sha, nil
 		}
 
-		return "", fmt.Errorf("failed to resolve ref %s to SHA for %s/%s: %s: %w", ref, owner, repo, strings.TrimSpace(outputStr), err)
+		return "", fmt.Errorf("unable to resolve ref %s to SHA for %s/%s: %s: %w; check the ref name and repository access. Example: \"main\"", ref, owner, repo, strings.TrimSpace(outputStr), err)
 	}
 
 	sha := strings.TrimSpace(stdout.String())
 	if sha == "" {
-		return "", fmt.Errorf("empty SHA returned for ref %s in %s/%s", ref, owner, repo)
+		return "", fmt.Errorf("empty SHA returned for ref %s in %s/%s; the ref might not point to a commit. Example: check if the branch has any commits", ref, owner, repo)
 	}
 
 	// Validate it's a valid SHA (40 hex characters)
 	if len(sha) != 40 || !gitutil.IsHexString(sha) {
-		return "", fmt.Errorf("invalid SHA format returned: %s", sha)
+		return "", fmt.Errorf("invalid SHA format returned %q; the API should return a 40-character hexadecimal string. Example: \"abc123...\"", sha)
 	}
 
 	return sha, nil
@@ -625,17 +625,17 @@ func resolveRefToSHAViaPublicAPI(owner, repo, ref string) (string, error) {
 		return "", err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unauthenticated public API failed for %s/%s@%s: HTTP %d: %s", owner, repo, ref, resp.StatusCode, strings.TrimSpace(string(body)))
+		return "", fmt.Errorf("unauthenticated public API request failed for %s/%s@%s: HTTP %d: %s; the repository requires authenticated access. Example: use an OAuth token", owner, repo, ref, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var result struct {
 		SHA string `json:"sha"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("failed to parse commit response: %w", err)
+		return "", fmt.Errorf("unable to parse commit response: %w; the API response structure might have changed. Example: check GitHub API documentation", err)
 	}
 	if result.SHA == "" || len(result.SHA) != 40 || !gitutil.IsHexString(result.SHA) {
-		return "", fmt.Errorf("invalid SHA returned from public API: %q", result.SHA)
+		return "", fmt.Errorf("invalid SHA returned from public API %q; the output should be a 40-character hexadecimal string. Example: \"abc123...\"", result.SHA)
 	}
 	return result.SHA, nil
 }
