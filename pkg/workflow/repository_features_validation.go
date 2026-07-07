@@ -132,15 +132,10 @@ func (c *Compiler) validateRepositoryFeatures(workflowData *WorkflowData) error 
 			}
 			// Continue to return aggregated errors even if this check fails
 		} else if !hasIssues {
-			// Changed to warning instead of error to allow compilation in forks where issues might be disabled.
-			// Strategy: Always try to create the issue at runtime and investigate if it fails.
-			// The runtime create_issue handler will provide better error messages if creation fails.
-			warningMsg := fmt.Sprintf("Repository %s may not have issues enabled. The workflow will attempt to create issues at runtime. If creation fails, enable issues in repository settings.", repo)
-			repositoryFeaturesLog.Printf("Warning: %s", warningMsg)
-			if c.verbose {
-				fmt.Fprintln(os.Stderr, console.FormatWarningMessage(warningMsg))
+			issueErr := fmt.Errorf("workflow uses safe-outputs.create-issue but repository %s does not have issues enabled. Enable issues in repository settings or remove create-issue from safe-outputs", repo)
+			if returnErr := collector.Add(issueErr); returnErr != nil {
+				return returnErr // Fail-fast mode
 			}
-			c.IncrementWarningCount()
 		}
 	}
 
@@ -268,7 +263,9 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	// Split repo into owner and name
 	parts := strings.SplitN(repo, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return false, fmt.Errorf("invalid repository format: %s. Expected format: owner/repo. Example: github/gh-aw", repo)
+		return false, NewValidationError("repository", repo,
+			"invalid repository format; expected 'owner/repo'",
+			"Example: github/gh-aw")
 	}
 	owner, name := parts[0], parts[1]
 
@@ -284,12 +281,14 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	stdOut, _, err := gh.Exec("api", "graphql", "-f", "query="+query,
 		"-f", "owner="+owner, "-f", "name="+name)
 	if err != nil {
-		return false, fmt.Errorf("failed to query discussions status: %w", err)
+		return false, NewOperationError("query", "discussions status", repo, err,
+			"Ensure the repository exists and your GitHub token has the necessary permissions.")
 	}
 
 	var response GraphQLResponse
 	if err := json.Unmarshal(stdOut.Bytes(), &response); err != nil {
-		return false, fmt.Errorf("failed to parse GraphQL response: %w", err)
+		return false, NewOperationError("parse", "GraphQL response", repo, err,
+			"The GitHub API returned an unexpected response format.")
 	}
 
 	return response.Data.Repository.HasDiscussionsEnabled, nil
@@ -315,14 +314,16 @@ func checkRepositoryHasIssuesUncached(repo string) (bool, error) {
 	// Create REST client
 	client, err := api.DefaultRESTClient()
 	if err != nil {
-		return false, fmt.Errorf("failed to create REST client: %w", err)
+		return false, NewOperationError("create", "REST client", "", err,
+			"Ensure the GitHub CLI is properly installed and authenticated.")
 	}
 
 	// Fetch repository data using REST client
 	var response RepositoryResponse
 	err = client.Get("repos/"+repo, &response)
 	if err != nil {
-		return false, fmt.Errorf("failed to query repository: %w", err)
+		return false, NewOperationError("query", "repository", repo, err,
+			"Ensure the repository exists and your GitHub token has the necessary permissions.")
 	}
 
 	return response.HasIssues, nil
