@@ -13,6 +13,7 @@ import (
 	"github.com/github/gh-aw/pkg/console"
 	"github.com/github/gh-aw/pkg/constants"
 	"github.com/github/gh-aw/pkg/fileutil"
+	"github.com/github/gh-aw/pkg/gitutil"
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/github/gh-aw/pkg/workflow"
 )
@@ -31,6 +32,14 @@ var checkoutActionPattern = regexp.MustCompile(`^(\s*)(uses: actions/checkout@[^
 // If dryRun is true, only shows what would be done without making changes
 func ensureTrialRepository(repoSlug string, cloneRepoSlug string, forceDeleteHostRepo bool, dryRun bool, verbose bool) error {
 	trialRepoLog.Printf("Ensuring trial repository: %s (cloneRepo=%s, forceDelete=%v, dryRun=%v)", repoSlug, cloneRepoSlug, forceDeleteHostRepo, dryRun)
+
+	for _, arg := range []string{repoSlug, cloneRepoSlug} {
+		if arg != "" {
+			if err := gitutil.ValidateGitArg(arg); err != nil {
+				return err
+			}
+		}
+	}
 
 	parts := strings.Split(repoSlug, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
@@ -160,6 +169,11 @@ func ensureTrialRepository(repoSlug string, cloneRepoSlug string, forceDeleteHos
 
 func cleanupTrialRepository(repoSlug string, verbose bool) error {
 	trialRepoLog.Printf("Cleaning up trial repository: %s", repoSlug)
+
+	if err := gitutil.ValidateGitArg(repoSlug); err != nil {
+		return err
+	}
+
 	if verbose {
 		fmt.Fprintln(os.Stderr, console.FormatInfoMessage("Cleaning up host repository: "+repoSlug))
 	}
@@ -182,6 +196,11 @@ func cleanupTrialRepository(repoSlug string, verbose bool) error {
 
 func cloneTrialHostRepository(repoSlug string, verbose bool) (string, error) {
 	trialRepoLog.Printf("Cloning trial host repository: %s", repoSlug)
+
+	if err := gitutil.ValidateGitArg(repoSlug); err != nil {
+		return "", err
+	}
+
 	// Create temporary directory
 	tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("gh-aw-trial-%x", time.Now().UnixNano()))
 
@@ -195,7 +214,7 @@ func cloneTrialHostRepository(repoSlug string, verbose bool) (string, error) {
 	repoURL := fmt.Sprintf("https://github.com/%s.git", repoSlug)
 	trialRepoLog.Printf("Cloning repository from URL to tempDir: %s", tempDir)
 
-	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", repoSlug), "clone", repoURL, tempDir)
+	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", repoSlug), "clone", "--", repoURL, tempDir)
 	if err != nil {
 		trialRepoLog.Printf("Failed to clone host repository %s: %v", repoSlug, err)
 		return "", fmt.Errorf("failed to clone host repository %s: %w (output: %s)", repoURL, err, string(output))
@@ -537,6 +556,14 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 		fmt.Fprintln(os.Stderr, console.FormatInfoMessage(fmt.Sprintf("Cloning contents from %s into host repository %s", cloneRepoSlug, hostRepoSlug)))
 	}
 
+	for _, arg := range []string{cloneRepoSlug, cloneRepoVersion, hostRepoSlug} {
+		if arg != "" {
+			if err := gitutil.ValidateGitArg(arg); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Save the original working directory to restore it later
 	originalDir, err := os.Getwd()
 	if err != nil {
@@ -551,7 +578,7 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 	// Clone the source repository
 	cloneURL := fmt.Sprintf("https://github.com/%s.git", cloneRepoSlug)
 
-	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", cloneRepoSlug), "clone", cloneURL, tempCloneDir)
+	output, err := workflow.RunGitCombined(fmt.Sprintf("Cloning %s...", cloneRepoSlug), "clone", "--", cloneURL, tempCloneDir)
 	if err != nil {
 		return fmt.Errorf("failed to clone source repository %s: %w (output: %s)", cloneURL, err, string(output))
 	}

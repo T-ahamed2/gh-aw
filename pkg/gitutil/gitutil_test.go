@@ -405,3 +405,54 @@ func TestReadFileFromHEAD(t *testing.T) {
 		assert.Contains(t, err.Error(), "gitRoot must not be empty", "error should mention empty gitRoot")
 	})
 }
+
+func TestValidateGitArg(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		shouldError bool
+	}{
+		{
+			name:        "simple valid branch",
+			input:       "main",
+			shouldError: false,
+		},
+		{
+			name:        "valid owner/repo",
+			input:       "owner/repo",
+			shouldError: false,
+		},
+		{
+			name:        "hyphenated name is allowed",
+			input:       "my-branch",
+			shouldError: false,
+		},
+		{
+			name:        "starts with hyphen (flag injection)",
+			input:       "-v",
+			shouldError: true,
+		},
+		{
+			name:        "starts with double hyphen (flag injection)",
+			input:       "--help",
+			shouldError: true,
+		},
+		{
+			name:        "empty string",
+			input:       "",
+			shouldError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGitArg(tt.input)
+			if tt.shouldError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "must not start with a hyphen")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
