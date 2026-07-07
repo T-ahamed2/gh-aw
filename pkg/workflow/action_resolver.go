@@ -101,7 +101,8 @@ func (r *ActionResolver) ResolveSHA(ctx context.Context, repo, version string) (
 	// Check if we've already failed to resolve this action in this run
 	if r.failedResolutions[cacheKey] {
 		resolverLog.Printf("Skipping resolution for %s@%s: already failed in this run", repo, version)
-		return "", fmt.Errorf("previously failed to resolve %s@%s in this compilation run", repo, version)
+		return "", NewOperationError("resolve-action", "action", repo+"@"+version, nil,
+			"The action previously failed to resolve in this run. Should check if the tag exists and your network connection is valid. Example: actions/checkout@v4")
 	}
 
 	// Check cache first using the pre-computed key to avoid a second key allocation.
@@ -169,12 +170,16 @@ func ParseTagRefTSV(line string) (sha, objType string, err error) {
 	line = strings.TrimSpace(line)
 	parts := strings.SplitN(line, "\t", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("unexpected format: %q", line)
+		return "", "", NewValidationError("api-response", line,
+			"The API returned an unexpected response format. Requires a tab-separated SHA and object type. Example: 1234567890abcdef1234567890abcdef12345678\tcommit",
+			"Check GitHub API status or your network proxy.")
 	}
 	sha = parts[0]
 	objType = parts[1]
 	if len(sha) != 40 || !gitutil.IsHexString(sha) {
-		return "", "", fmt.Errorf("invalid SHA format: expected 40 hex characters, got %d (%s)", len(sha), sha)
+		return "", "", NewValidationError("sha", sha,
+			"The resolved SHA is invalid. Expected 40 hex characters. Example: 1234567890abcdef1234567890abcdef12345678",
+			"Ensure the tag or branch exists on GitHub.")
 	}
 	return sha, objType, nil
 }
@@ -204,12 +209,14 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 	ForceGHHostEnv(cmd, "github.com")
 	output, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve %s@%s: %w", repo, version, err)
+		return "", NewOperationError("resolve-tag", "action", repo+"@"+version, err,
+			"Failed to resolve the tag via GitHub API. Should verify the action exists and your GITHUB_TOKEN has valid permissions. Example: gh api /repos/actions/checkout/git/ref/tags/v4")
 	}
 
 	sha, objType, err := ParseTagRefTSV(string(output))
 	if err != nil {
-		return "", fmt.Errorf("failed to parse API response for %s@%s: %w", repo, version, err)
+		return "", NewOperationError("parse-tag-response", "action", repo+"@"+version, err,
+			"Failed to parse the API response. Should check if the GitHub API returned a valid tag object. Example: Use 'gh api' to manually verify the ref.")
 	}
 
 	// Annotated tags (and chained tag objects) point to a tag object rather than
@@ -218,27 +225,39 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 	// mutable tag object SHA (which changes when the tag is re-created).
 	const maxTagPeelDepth = 10
 	for depth := 0; objType == "tag"; depth++ {
-		if depth >= maxTagPeelDepth {
-			return "", fmt.Errorf("failed to resolve %s@%s: exceeded max tag peel depth %d", repo, version, maxTagPeelDepth)
-		}
-		resolverLog.Printf("Detected annotated tag for %s@%s (depth %d, tag object SHA: %s), peeling to underlying object", repo, version, depth, sha)
-		tagPath := fmt.Sprintf("/repos/%s/git/tags/%s", baseRepo, sha)
-		// Each peel gets its own fresh 30-second timeout derived from the original
-		// caller context (ctx), not from callCtx, so we don't accidentally shrink
-		// the budget for subsequent peels.
-		peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
-		defer peelCancel()
-		cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
-		ForceGHHostEnv(cmd2, "github.com")
-		output2, peelErr := cmd2.Output()
-		peelCancel()
-		if peelErr != nil {
-			return "", fmt.Errorf("failed to peel annotated tag %s@%s: %w", repo, version, peelErr)
-		}
-		sha, objType, err = ParseTagRefTSV(string(output2))
+		var nextSha, nextObjType string
+		err := func() error {
+			if depth >= maxTagPeelDepth {
+				return NewOperationError("peel-tag", "action", repo+"@"+version, nil,
+					fmt.Sprintf("Exceeded max tag peel depth %d. This action has too many nested tags. Should use a standard version tag. Example: v4", maxTagPeelDepth))
+			}
+			resolverLog.Printf("Detected annotated tag for %s@%s (depth %d, tag object SHA: %s), peeling to underlying object", repo, version, depth, sha)
+			tagPath := fmt.Sprintf("/repos/%s/git/tags/%s", baseRepo, sha)
+			// Each peel gets its own fresh 30-second timeout derived from the original
+			// caller context (ctx), not from callCtx, so we don't accidentally shrink
+			// the budget for subsequent peels.
+			peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
+			defer peelCancel()
+			cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
+			ForceGHHostEnv(cmd2, "github.com")
+			output2, peelErr := cmd2.Output()
+			if peelErr != nil {
+				return NewOperationError("peel-annotated-tag", "action", repo+"@"+version, peelErr,
+					"Failed to peel the annotated tag to its underlying commit. Should ensure the tag is not corrupted on GitHub. Example: gh api /repos/owner/repo/git/tags/SHA")
+			}
+			var parseErr error
+			nextSha, nextObjType, parseErr = ParseTagRefTSV(string(output2))
+			if parseErr != nil {
+				return NewOperationError("parse-peeled-tag", "action", repo+"@"+version, parseErr,
+					"Failed to parse the peeled tag API response. Should check if the tag object is valid. Example: Use 'gh api' to inspect the tag object.")
+			}
+			return nil
+		}()
 		if err != nil {
-			return "", fmt.Errorf("failed to parse peeled tag API response for %s@%s: %w", repo, version, err)
+			return "", err
 		}
+		sha = nextSha
+		objType = nextObjType
 	}
 	resolverLog.Printf("Resolved %s@%s to %s SHA: %s", repo, version, objType, sha)
 
@@ -264,13 +283,17 @@ func ResolveGhAwRef(ctx context.Context, ref string) (string, error) {
 	if err != nil {
 		msg := strings.TrimSpace(string(output))
 		if msg != "" {
-			return "", fmt.Errorf("failed to resolve gh-aw ref %q to SHA: %s: %w", ref, msg, err)
+			return "", NewOperationError("resolve-gh-aw-ref", "ref", ref, err,
+				fmt.Sprintf("Failed to resolve gh-aw ref to SHA: %s. Should ensure the branch or tag exists in github/gh-aw. Example: main", msg))
 		}
-		return "", fmt.Errorf("failed to resolve gh-aw ref %q to SHA: %w", ref, err)
+		return "", NewOperationError("resolve-gh-aw-ref", "ref", ref, err,
+			"Failed to resolve gh-aw ref to SHA. Should check your network connection. Example: main")
 	}
 	sha := strings.TrimSpace(string(output))
 	if !gitutil.IsValidFullSHA(sha) {
-		return "", fmt.Errorf("unexpected response resolving gh-aw ref %q: got %q (expected 40-char hex SHA)", ref, sha)
+		return "", NewValidationError("gh-aw-ref-sha", sha,
+			"The resolved SHA for gh-aw ref is invalid. Expected a 40-character hex SHA. Example: 1234567890abcdef1234567890abcdef12345678",
+			"Check if the ref name is correct and exists on GitHub.")
 	}
 	resolverLog.Printf("Resolved --gh-aw-ref %q to commit SHA %s", ref, sha)
 	return sha, nil

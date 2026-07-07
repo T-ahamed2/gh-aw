@@ -85,7 +85,12 @@ This is a test workflow.
 	serverCmd.Dir = tmpDir
 	transport := &mcp.CommandTransport{Command: serverCmd}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Windows CI can be slow, especially starting subprocesses.
+	timeout := 60 * time.Second
+	if runtime.GOOS == "windows" {
+		timeout = 120 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 
 	session, err := client.Connect(ctx, transport, nil)
 	if err != nil {
