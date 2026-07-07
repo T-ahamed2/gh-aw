@@ -1,0 +1,3 @@
+## 2026-07-07 - [LevenshteinDistance & FindClosestMatches optimization]
+**Learning:** Optimizing `LevenshteinDistance` in Go using a single-row DP table and input swapping can reduce space complexity to O(min(M,N)). Employing a stack-allocated buffer (e.g., `[65]int`) for small strings eliminates heap allocations and significantly improves performance (nearly 2x faster). Adding an early exit check in `FindClosestMatches` based on length difference avoids expensive calculations.
+**Action:** Always prefer single-row DP and stack allocation for string distance algorithms. Implement early-exit checks based on length difference for fuzzy matching.
