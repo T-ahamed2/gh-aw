@@ -181,3 +181,12 @@ func ReadFileFromHEAD(filePath, gitRoot string) (string, error) {
 	}
 	return string(output), nil
 }
+
+// ValidateGitArg checks if a string argument intended for a git command starts
+// with a hyphen, which could be used for flag injection.
+func ValidateGitArg(arg string) error {
+	if strings.HasPrefix(arg, "-") {
+		return fmt.Errorf("security: git argument %q must not start with a hyphen to prevent flag injection", arg)
+	}
+	return nil
+}

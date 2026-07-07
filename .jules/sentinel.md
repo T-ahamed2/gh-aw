@@ -1,0 +1,4 @@
+## 2026-07-07 - Git Flag Injection Mitigation
+**Vulnerability:** Potential flag injection in `git` and `gh` command executions where user-supplied inputs (like branch names, repository slugs, or file paths) were passed as positional arguments without sufficient validation or delimiters.
+**Learning:** Even when using `exec.Command` with separate arguments (avoiding shell injection), an attacker can still inject flags if the input starts with a hyphen. Standard defense involves both input validation (rejecting hyphen-prefixed strings) and using the `--` separator to delineate options from positional arguments.
+**Prevention:** Implement a central validation helper like `ValidateGitArg` to reject hyphen-prefixed arguments and always use `--` before positional arguments in external command invocations.
