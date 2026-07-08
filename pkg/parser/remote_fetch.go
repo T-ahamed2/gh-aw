@@ -42,6 +42,16 @@ var gitListCloneCache = struct {
 }
 
 func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
+
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return "", errors.New("git fallback requires a non-empty ref")
@@ -393,7 +403,24 @@ func parseWorkflowSpecParts(spec string) (string, string, string, string, error)
 		remoteLog.Printf("Invalid workflowspec format: %s", spec)
 		return "", "", "", "", errors.New("invalid workflowspec: must be owner/repo/path[@ref]")
 	}
-	return slashParts[0], slashParts[1], strings.Join(slashParts[2:], "/"), ref, nil
+	owner := slashParts[0]
+	repo := slashParts[1]
+	filePath := strings.Join(slashParts[2:], "/")
+
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return "", "", "", "", err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return "", "", "", "", err
+	}
+	if err := gitutil.ValidateGitArg(filePath); err != nil {
+		return "", "", "", "", err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", "", "", "", err
+	}
+
+	return owner, repo, filePath, ref, nil
 }
 
 func resolveWorkflowSpecSHAForCache(owner, repo, ref string, cache *ImportCache) string {
@@ -500,6 +527,16 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 
 // resolveRefToSHA resolves a git ref (branch, tag, or SHA) to its commit SHA
 func resolveRefToSHA(owner, repo, ref, host string) (string, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
+
 	// If ref is already a full SHA (40 hex characters), return it as-is
 	if len(ref) == 40 && gitutil.IsHexString(ref) {
 		return ref, nil
@@ -869,6 +906,18 @@ func resolveAndValidateRemoteSymlinkBase(parentDir, target, dirPath string) (str
 // - ref: Git reference (branch, tag, or commit SHA)
 // Returns the file content as bytes or an error if the file cannot be retrieved.
 func DownloadFileFromGitHub(owner, repo, path, ref string) ([]byte, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(path); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
 	return downloadFileFromGitHubWithDepth(owner, repo, path, ref, 0, "")
 }
 
@@ -878,6 +927,18 @@ func DownloadFileFromGitHub(owner, repo, path, ref string) ([]byte, error) {
 // host is the hostname without scheme (e.g., "github.com", "myorg.ghe.com").
 // An empty host uses the default configured host (GH_HOST or github.com).
 func DownloadFileFromGitHubForHost(owner, repo, path, ref, host string) ([]byte, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(path); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
 	return downloadFileFromGitHubWithDepth(owner, repo, path, ref, 0, host)
 }
 
@@ -1023,12 +1084,36 @@ func retryDownloadViaResolvedSymlink(
 // ListWorkflowFiles lists workflow files from a remote GitHub repository
 // Returns a list of .md files in the specified directory (excluding subdirectories)
 func ListWorkflowFiles(owner, repo, ref, workflowPath string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(workflowPath); err != nil {
+		return nil, err
+	}
 	return listWorkflowFilesForHost(owner, repo, ref, workflowPath, "")
 }
 
 // ListWorkflowFilesForHost lists workflow files from a remote GitHub repository on an explicit host.
 // Use this when the target repository is on a different host than the one configured via GH_HOST.
 func ListWorkflowFilesForHost(owner, repo, ref, workflowPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(workflowPath); err != nil {
+		return nil, err
+	}
 	return listWorkflowFilesForHost(owner, repo, ref, workflowPath, host)
 }
 
