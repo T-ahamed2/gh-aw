@@ -88,7 +88,7 @@ func FindGitRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		gitutilLog.Printf("Failed to get current directory: %v", err)
-		return "", fmt.Errorf("failed to get current directory: %w", err)
+		return "", fmt.Errorf("failed to get current directory: %w. Expected a valid working directory; should check process permissions", err)
 	}
 
 	root, err := FindGitRootFrom(dir)
@@ -108,7 +108,7 @@ func FindGitRoot() (string, error) {
 func FindGitRootFrom(startDir string) (string, error) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve absolute path for %q: %w", startDir, err)
+		return "", fmt.Errorf("failed to resolve absolute path for %q: %w. Expected a valid path string; Example: /home/user/repo", startDir, err)
 	}
 	dir = filepath.Clean(dir)
 	for {
@@ -161,7 +161,7 @@ func ReadFileFromHEAD(filePath, gitRoot string) (string, error) {
 	// forward slashes even on Windows.
 	relPath, err := filepath.Rel(gitRoot, absPath)
 	if err != nil {
-		return "", fmt.Errorf("cannot compute path of %q relative to git root %q: %w", absPath, gitRoot, err)
+		return "", fmt.Errorf("cannot compute path of %q relative to git root %q: %w. Expected path to be within repository; Example: src/main.go", absPath, gitRoot, err)
 	}
 
 	// Reject paths that escape the repository (e.g. "../secret").
@@ -177,7 +177,7 @@ func ReadFileFromHEAD(filePath, gitRoot string) (string, error) {
 	output, err := cmd.Output()
 	if err != nil {
 		gitutilLog.Printf("File %q not found in HEAD commit: %v", filePath, err)
-		return "", fmt.Errorf("file %q not found in HEAD commit: %w", filePath, err)
+		return "", fmt.Errorf("file %q not found in HEAD commit: %w. Expected file to be committed to Git; should verify file existence and Git history", filePath, err)
 	}
 	return string(output), nil
 }

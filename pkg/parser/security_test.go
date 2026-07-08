@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGitArgumentInjection(t *testing.T) {
@@ -61,7 +62,7 @@ func TestGitArgumentInjection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := DownloadFileFromGitHub(tt.owner, tt.repo, tt.path, tt.ref)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), "flag injection")
 			} else {
 				// We expect a different error (e.g. auth or network) but NOT a validation error
@@ -110,7 +111,7 @@ func TestWorkflowSpecInjection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, _, _, _, err := parseWorkflowSpecParts(tt.spec)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), "flag injection")
 			} else {
 				assert.NoError(t, err)

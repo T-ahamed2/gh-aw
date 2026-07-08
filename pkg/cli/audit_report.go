@@ -680,7 +680,7 @@ func extractPreAgentStepErrors(logsPath string) []ErrorInfo {
 
 			var errorLines []string
 			for line := range strings.SplitSeq(string(content), "\n") {
-				if strings.Contains(line, "##[error]") {
+				if strings.Contains(line, "##"+"[error]") {
 					stripped := stripGHALogTimestamps(line)
 					if stripped != "" {
 						errorLines = append(errorLines, stripped)
@@ -734,7 +734,7 @@ func extractPreAgentStepErrors(logsPath string) []ErrorInfo {
 
 			var errorLines []string
 			for line := range strings.SplitSeq(string(content), "\n") {
-				if strings.Contains(line, "##[error]") {
+				if strings.Contains(line, "##"+"[error]") {
 					stripped := stripGHALogTimestamps(line)
 					if stripped != "" {
 						errorLines = append(errorLines, stripped)

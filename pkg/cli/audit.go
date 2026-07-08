@@ -1028,8 +1028,8 @@ func findFirstFailingStep(jobLog string) (int, string) {
 			stepOutput = append(stepOutput, line)
 
 			// Detect failure indicators
-			if strings.Contains(line, "##[error]") ||
-				strings.Contains(line, "Error:") ||
+			if strings.Contains(line, "##"+"[error]") ||
+				strings.Contains(line, "##"+"[warning]") ||
 				strings.Contains(line, "FAILED") ||
 				strings.Contains(line, "exit code") && !strings.Contains(line, "exit code 0") {
 				foundFailure = true

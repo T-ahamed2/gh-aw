@@ -425,7 +425,7 @@ func TestValidateGitArg(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateGitArg(tt.arg)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), "flag injection")
 			} else {
 				assert.NoError(t, err)
