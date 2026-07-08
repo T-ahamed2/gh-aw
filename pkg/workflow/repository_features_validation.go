@@ -224,7 +224,8 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	actualFeatures, ok := actual.(*RepositoryFeatures)
 	if !ok {
 		repositoryFeaturesCache.Delete(repo)
-		return nil, fmt.Errorf("invalid repository feature cache entry for %s: expected *RepositoryFeatures, got %T", repo, actual)
+		return nil, NewOperationError("load", "cache", repo, nil,
+			fmt.Sprintf("Internal error: invalid repository feature cache entry. Expected *RepositoryFeatures, got %T", actual))
 	}
 
 	repositoryFeaturesLog.Printf("Cached repository features for: %s (discussions: %v, issues: %v)", repo, actualFeatures.HasDiscussions, actualFeatures.HasIssues)
@@ -271,7 +272,8 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	// Split repo into owner and name
 	parts := strings.SplitN(repo, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return false, fmt.Errorf("invalid repository format: %s. Expected format: owner/repo. Example: github/gh-aw", repo)
+		return false, NewOperationError("parse", "repository format", repo, nil,
+			"Expected format: owner/repo. Example: github/gh-aw")
 	}
 	owner, name := parts[0], parts[1]
 
@@ -287,12 +289,14 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	stdOut, _, err := gh.Exec("api", "graphql", "-f", "query="+query,
 		"-f", "owner="+owner, "-f", "name="+name)
 	if err != nil {
-		return false, fmt.Errorf("failed to query discussions status: %w", err)
+		return false, NewOperationError("query", "discussions status", repo, err,
+			"Ensure the GitHub CLI is authenticated and has permissions to query discussions. Example: gh auth status")
 	}
 
 	var response GraphQLResponse
 	if err := json.Unmarshal(stdOut.Bytes(), &response); err != nil {
-		return false, fmt.Errorf("failed to parse GraphQL response: %w", err)
+		return false, NewOperationError("parse", "GraphQL response", repo, err,
+			"The GitHub API returned a malformed response when checking for discussions.")
 	}
 
 	return response.Data.Repository.HasDiscussionsEnabled, nil
@@ -318,14 +322,16 @@ func checkRepositoryHasIssuesUncached(repo string) (bool, error) {
 	// Create REST client
 	client, err := api.DefaultRESTClient()
 	if err != nil {
-		return false, fmt.Errorf("failed to create REST client: %w", err)
+		return false, NewOperationError("create", "REST client", "default", err,
+			"Ensure the GitHub CLI is properly installed and configured.")
 	}
 
 	// Fetch repository data using REST client
 	var response RepositoryResponse
 	err = client.Get("repos/"+repo, &response)
 	if err != nil {
-		return false, fmt.Errorf("failed to query repository: %w", err)
+		return false, NewOperationError("query", "repository", repo, err,
+			"Ensure the GitHub CLI is authenticated and you have read access to the repository. Example: gh auth status")
 	}
 
 	return response.HasIssues, nil

@@ -103,7 +103,7 @@ func TestActionResolverFailedResolutionCache(t *testing.T) {
 	}
 
 	// Verify the error message indicates it was skipped
-	expectedErrMsg := "previously failed to resolve"
+	expectedErrMsg := "Previously failed to resolve"
 	if !strings.Contains(err2.Error(), expectedErrMsg) {
 		t.Errorf("Expected error message to contain %q, got: %v", expectedErrMsg, err2)
 	}
