@@ -218,25 +218,32 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 	// mutable tag object SHA (which changes when the tag is re-created).
 	const maxTagPeelDepth = 10
 	for depth := 0; objType == "tag"; depth++ {
-		if depth >= maxTagPeelDepth {
-			return "", fmt.Errorf("failed to resolve %s@%s: exceeded max tag peel depth %d", repo, version, maxTagPeelDepth)
-		}
-		resolverLog.Printf("Detected annotated tag for %s@%s (depth %d, tag object SHA: %s), peeling to underlying object", repo, version, depth, sha)
-		tagPath := fmt.Sprintf("/repos/%s/git/tags/%s", baseRepo, sha)
-		// Each peel gets its own fresh 30-second timeout derived from the original
-		// caller context (ctx), not from callCtx, so we don't accidentally shrink
-		// the budget for subsequent peels.
-		peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
-		cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
-		ForceGHHostEnv(cmd2, "github.com")
-		output2, peelErr := cmd2.Output()
-		peelCancel()
+		peelErr := func() error {
+			if depth >= maxTagPeelDepth {
+				return fmt.Errorf("failed to resolve %s@%s: exceeded max tag peel depth %d", repo, version, maxTagPeelDepth)
+			}
+			resolverLog.Printf("Detected annotated tag for %s@%s (depth %d, tag object SHA: %s), peeling to underlying object", repo, version, depth, sha)
+			tagPath := fmt.Sprintf("/repos/%s/git/tags/%s", baseRepo, sha)
+			// Each peel gets its own fresh 30-second timeout derived from the original
+			// caller context (ctx), not from callCtx, so we don't accidentally shrink
+			// the budget for subsequent peels.
+			peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
+			defer peelCancel()
+			cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
+			ForceGHHostEnv(cmd2, "github.com")
+			output2, execErr := cmd2.Output()
+			if execErr != nil {
+				return fmt.Errorf("failed to peel annotated tag %s@%s: %w", repo, version, execErr)
+			}
+			var parseErr error
+			sha, objType, parseErr = ParseTagRefTSV(string(output2))
+			if parseErr != nil {
+				return fmt.Errorf("failed to parse peeled tag API response for %s@%s: %w", repo, version, parseErr)
+			}
+			return nil
+		}()
 		if peelErr != nil {
-			return "", fmt.Errorf("failed to peel annotated tag %s@%s: %w", repo, version, peelErr)
-		}
-		sha, objType, err = ParseTagRefTSV(string(output2))
-		if err != nil {
-			return "", fmt.Errorf("failed to parse peeled tag API response for %s@%s: %w", repo, version, err)
+			return "", peelErr
 		}
 	}
 	resolverLog.Printf("Resolved %s@%s to %s SHA: %s", repo, version, objType, sha)

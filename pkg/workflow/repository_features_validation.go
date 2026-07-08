@@ -167,12 +167,15 @@ func getCurrentRepositoryUncached() (string, error) {
 	// This works when in a git repository with GitHub remote and respects GH_REPO
 	repo, err := repository.Current()
 	if err != nil {
-		return "", fmt.Errorf("failed to get current repository: %w", err)
+		return "", NewOperationError("get", "repository", "current", err,
+			"Ensure you are running in a git repository with a GitHub remote configured. Example: git remote add origin https://github.com/owner/repo")
 	}
 
 	// Validate that owner and name are not empty
 	if repo.Owner == "" || repo.Name == "" {
-		return "", fmt.Errorf("repository owner or name is empty (owner: %q, name: %q)", repo.Owner, repo.Name)
+		return "", NewValidationError("repository", fmt.Sprintf("%s/%s", repo.Owner, repo.Name),
+			"repository owner and name must be non-empty",
+			"Check your git remote configuration. Expected format: owner/repo")
 	}
 
 	repoName := fmt.Sprintf("%s/%s", repo.Owner, repo.Name)
@@ -187,7 +190,8 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 		features, ok := cached.(*RepositoryFeatures)
 		if !ok {
 			repositoryFeaturesCache.Delete(repo)
-			return nil, fmt.Errorf("invalid repository feature cache entry for %s: expected *RepositoryFeatures, got %T", repo, cached)
+			return nil, NewOperationError("load", "cache", repo, nil,
+				fmt.Sprintf("Internal error: invalid repository feature cache entry. Expected *RepositoryFeatures, got %T", cached))
 		}
 		repositoryFeaturesLog.Printf("Using cached repository features for: %s", repo)
 		return features, nil
@@ -201,14 +205,16 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	// Check discussions
 	hasDiscussions, err := checkRepositoryHasDiscussionsUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check discussions: %w", err)
+		return nil, NewOperationError("check", "discussions", repo, err,
+			"Ensure the GitHub CLI is authenticated and you have read access to the repository. Example: gh auth status")
 	}
 	features.HasDiscussions = hasDiscussions
 
 	// Check issues
 	hasIssues, err := checkRepositoryHasIssuesUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check issues: %w", err)
+		return nil, NewOperationError("check", "issues", repo, err,
+			"Ensure the GitHub CLI is authenticated and you have read access to the repository. Example: gh auth status")
 	}
 	features.HasIssues = hasIssues
 
