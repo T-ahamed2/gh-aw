@@ -13,6 +13,7 @@ import (
 	"github.com/github/gh-aw/pkg/console"
 	"github.com/github/gh-aw/pkg/constants"
 	"github.com/github/gh-aw/pkg/fileutil"
+	"github.com/github/gh-aw/pkg/gitutil"
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/github/gh-aw/pkg/workflow"
 )
@@ -31,6 +32,15 @@ var checkoutActionPattern = regexp.MustCompile(`^(\s*)(uses: actions/checkout@[^
 // If dryRun is true, only shows what would be done without making changes
 func ensureTrialRepository(repoSlug string, cloneRepoSlug string, forceDeleteHostRepo bool, dryRun bool, verbose bool) error {
 	trialRepoLog.Printf("Ensuring trial repository: %s (cloneRepo=%s, forceDelete=%v, dryRun=%v)", repoSlug, cloneRepoSlug, forceDeleteHostRepo, dryRun)
+
+	if err := gitutil.ValidateGitArg(repoSlug); err != nil {
+		return err
+	}
+	if cloneRepoSlug != "" {
+		if err := gitutil.ValidateGitArg(cloneRepoSlug); err != nil {
+			return err
+		}
+	}
 
 	parts := strings.Split(repoSlug, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
@@ -160,6 +170,10 @@ func ensureTrialRepository(repoSlug string, cloneRepoSlug string, forceDeleteHos
 
 func cleanupTrialRepository(repoSlug string, verbose bool) error {
 	trialRepoLog.Printf("Cleaning up trial repository: %s", repoSlug)
+
+	if err := gitutil.ValidateGitArg(repoSlug); err != nil {
+		return err
+	}
 	if verbose {
 		fmt.Fprintln(os.Stderr, console.FormatInfoMessage("Cleaning up host repository: "+repoSlug))
 	}

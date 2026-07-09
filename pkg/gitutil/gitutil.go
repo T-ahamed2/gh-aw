@@ -142,6 +142,16 @@ func FindGitRootFrom(startDir string) (string, error) {
 	}
 }
 
+// ValidateGitArg checks if a string argument starts with a hyphen, which could be
+// interpreted as a command-line flag when passed to an external command like git or gh.
+// Returns an error if the argument starts with a hyphen, otherwise returns nil.
+func ValidateGitArg(arg string) error {
+	if strings.HasPrefix(arg, "-") {
+		return fmt.Errorf("argument %q cannot start with a hyphen: possible flag injection attempt", arg)
+	}
+	return nil
+}
+
 // ReadFileFromHEAD reads a file from git HEAD using a pre-computed repository root.
 // filePath is resolved with filepath.Abs, so relative paths are interpreted from the
 // current process working directory (not gitRoot). Prefer passing an absolute path
