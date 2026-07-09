@@ -1,0 +1,3 @@
+## 2026-07-09 - [Optimizing Levenshtein Distance and Fuzzy Matching]
+**Learning:** The Levenshtein distance algorithm is (N \times M)$ and can be a significant bottleneck in fuzzy matching loops. By using a single-row DP table, ensuring the shorter string drives the allocation, and using a stack-allocated buffer for small strings, we can eliminate heap allocations for common cases. Additionally, a quick length-difference check can skip the full calculation for strings that are too different.
+**Action:** Apply (\min(N,M))$ space optimization and stack-allocated buffers for small transient slices in performance-critical loops. Add length-based short-circuits in search/filtering logic.
