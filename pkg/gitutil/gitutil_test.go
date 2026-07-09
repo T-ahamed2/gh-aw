@@ -204,6 +204,62 @@ func TestIsHexString(t *testing.T) {
 	}
 }
 
+func TestValidateGitArg(t *testing.T) {
+	tests := []struct {
+		name        string
+		arg         string
+		expectError bool
+	}{
+		{
+			name:        "normal branch name",
+			arg:         "main",
+			expectError: false,
+		},
+		{
+			name:        "branch name with slash",
+			arg:         "feature/security-fix",
+			expectError: false,
+		},
+		{
+			name:        "hyphenated name",
+			arg:         "security-fix",
+			expectError: false,
+		},
+		{
+			name:        "short flag",
+			arg:         "-v",
+			expectError: true,
+		},
+		{
+			name:        "long flag",
+			arg:         "--help",
+			expectError: true,
+		},
+		{
+			name:        "triple hyphen flag",
+			arg:         "---triple",
+			expectError: true,
+		},
+		{
+			name:        "empty string",
+			arg:         "",
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGitArg(tt.arg)
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "cannot start with a hyphen")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestIsValidFullSHA(t *testing.T) {
 	tests := []struct {
 		name     string
