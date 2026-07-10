@@ -811,7 +811,7 @@ ENVIRONMENT=test
 ##[endgroup]
 ##[group]Run npm test
 Running tests...
-##[error]Test failed: expected 5, got 3
+##` + `[error]Test failed: expected 5, got 3
 Error: Process completed with exit code 1.
 ##[endgroup]
 ##[group]Run cleanup.sh
@@ -832,7 +832,7 @@ Cleaning up...
 				if !strings.Contains(output, "npm test") {
 					t.Error("Output should contain 'npm test'")
 				}
-				if !strings.Contains(output, "##[error]Test failed") {
+				if !strings.Contains(output, "##"+"[error]Test failed") {
 					t.Error("Output should contain error message")
 				}
 			},
@@ -892,7 +892,7 @@ Success
 ##[endgroup]
 ##[group]Step 2
 Running...
-##[error]Something went wrong
+##` + `[error]Something went wrong
 Error details here
 ##[endgroup]
 ##[group]Step 3
@@ -900,7 +900,7 @@ This runs after failure
 ##[endgroup]`,
 			expectedStepNum: 2,
 			checkOutput: func(t *testing.T, output string) {
-				if !strings.Contains(output, "##[error]Something went wrong") {
+				if !strings.Contains(output, "##"+"[error]Something went wrong") {
 					t.Error("Output should contain error message")
 				}
 			},

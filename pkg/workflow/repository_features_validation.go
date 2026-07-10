@@ -132,10 +132,15 @@ func (c *Compiler) validateRepositoryFeatures(workflowData *WorkflowData) error 
 			}
 			// Continue to return aggregated errors even if this check fails
 		} else if !hasIssues {
-			issueErr := fmt.Errorf("workflow uses safe-outputs.create-issue but repository %s does not have issues enabled. Enable issues in repository settings or remove create-issue from safe-outputs", repo)
-			if returnErr := collector.Add(issueErr); returnErr != nil {
-				return returnErr // Fail-fast mode
+			// Changed to warning instead of error to allow compilation and execution in fork environments
+			// where issues may be disabled. The workflow will attempt to create issues at runtime,
+			// and the safe-outputs handler will provide actionable guidance if it fails.
+			warningMsg := fmt.Sprintf("Repository %s may not have issues enabled. The workflow will attempt to create issues at runtime. If creation fails, enable issues in repository settings.", repo)
+			repositoryFeaturesLog.Printf("Warning: %s", warningMsg)
+			if c.verbose {
+				fmt.Fprintln(os.Stderr, console.FormatWarningMessage(warningMsg))
 			}
+			c.IncrementWarningCount()
 		}
 	}
 
@@ -165,12 +170,15 @@ func getCurrentRepositoryUncached() (string, error) {
 	// This works when in a git repository with GitHub remote and respects GH_REPO
 	repo, err := repository.Current()
 	if err != nil {
-		return "", fmt.Errorf("failed to get current repository: %w", err)
+		return "", NewOperationError("identify", "current repository", "", err,
+			"Ensure you are running the command within a git repository with a GitHub remote configured.")
 	}
 
 	// Validate that owner and name are not empty
 	if repo.Owner == "" || repo.Name == "" {
-		return "", fmt.Errorf("repository owner or name is empty (owner: %q, name: %q)", repo.Owner, repo.Name)
+		return "", NewValidationError("repository", fmt.Sprintf("%s/%s", repo.Owner, repo.Name),
+			"repository owner or name is empty",
+			"Check your git remote configuration. Expected format: owner/repo. Example: github/gh-aw")
 	}
 
 	repoName := fmt.Sprintf("%s/%s", repo.Owner, repo.Name)
@@ -199,14 +207,16 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	// Check discussions
 	hasDiscussions, err := checkRepositoryHasDiscussionsUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check discussions: %w", err)
+		return nil, NewOperationError("check", "discussions status", repo, err,
+			"Verify your GitHub token has read access to the repository and you have a stable network connection.")
 	}
 	features.HasDiscussions = hasDiscussions
 
 	// Check issues
 	hasIssues, err := checkRepositoryHasIssuesUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check issues: %w", err)
+		return nil, NewOperationError("check", "issues status", repo, err,
+			"Verify your GitHub token has read access to the repository and you have a stable network connection.")
 	}
 	features.HasIssues = hasIssues
 
