@@ -10,6 +10,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
+	"github.com/github/gh-aw/pkg/constants"
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/github/gh-aw/pkg/parser"
 	"github.com/github/gh-aw/pkg/semverutil"
@@ -30,7 +31,7 @@ var getRepositoryPackageDefaultBranch = resolveRepositoryPackageDefaultBranch
 var getRepositoryPackageLatestRelease = resolveRepositoryPackageLatestRelease
 var addPackageManifestLog = logger.New("cli:add_package_manifest")
 
-var packageSourceDirectories = []string{"workflows", ".github/workflows"}
+var packageSourceDirectories = []string{"workflows", constants.WorkflowsDir}
 
 const repositoryPackageManifestFileName = "aw.yml"
 const repositoryPackageManifestVersion = "1"
@@ -496,13 +497,13 @@ func isSupportedManifestIncludePath(p string) bool {
 
 func isSupportedSkillDirectoryPrefix(cleaned string) bool {
 	return strings.HasPrefix(cleaned, packageSkillsDirectory+"/") ||
-		strings.HasPrefix(cleaned, ".github/"+packageSkillsDirectory+"/")
+		strings.HasPrefix(cleaned, constants.GithubDir+packageSkillsDirectory+"/")
 }
 
 func skillDirectoryRoot(cleaned string) string {
 	switch {
-	case strings.HasPrefix(cleaned, ".github/"+packageSkillsDirectory+"/"):
-		return ".github/" + packageSkillsDirectory
+	case strings.HasPrefix(cleaned, constants.GithubDir+packageSkillsDirectory+"/"):
+		return constants.GithubDir + packageSkillsDirectory
 	default:
 		return packageSkillsDirectory
 	}
@@ -510,7 +511,7 @@ func skillDirectoryRoot(cleaned string) string {
 
 func isSupportedAgentDirectoryPrefix(cleaned string) bool {
 	return strings.HasPrefix(cleaned, packageAgentsDirectory+"/") ||
-		strings.HasPrefix(cleaned, ".github/"+packageAgentsDirectory+"/")
+		strings.HasPrefix(cleaned, constants.GithubDir+packageAgentsDirectory+"/")
 }
 
 func agentDirectoryRoot(cleaned string) string {
