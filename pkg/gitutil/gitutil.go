@@ -173,6 +173,10 @@ func ReadFileFromHEAD(filePath, gitRoot string) (string, error) {
 
 	gitutilLog.Printf("Reading %q from git HEAD (relative path: %s)", filePath, relPath)
 
+	if err := ValidateGitArg(relPath); err != nil {
+		return "", err
+	}
+
 	cmd := exec.Command("git", "-C", gitRoot, "show", "HEAD:"+relPath)
 	output, err := cmd.Output()
 	if err != nil {
@@ -180,4 +184,13 @@ func ReadFileFromHEAD(filePath, gitRoot string) (string, error) {
 		return "", fmt.Errorf("file %q not found in HEAD commit: %w", filePath, err)
 	}
 	return string(output), nil
+}
+
+// ValidateGitArg checks if an argument starts with a hyphen, which could be used
+// for flag injection in git or gh commands.
+func ValidateGitArg(arg string) error {
+	if strings.HasPrefix(arg, "-") {
+		return fmt.Errorf("invalid git argument %q: arguments cannot start with a hyphen to prevent flag injection", arg)
+	}
+	return nil
 }
