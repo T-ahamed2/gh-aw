@@ -427,7 +427,7 @@ func TestValidateGitArg(t *testing.T) {
 			if tt.expected {
 				assert.NoError(t, err)
 			} else {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), "invalid git argument")
 			}
 		})
