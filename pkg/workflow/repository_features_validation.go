@@ -132,10 +132,15 @@ func (c *Compiler) validateRepositoryFeatures(workflowData *WorkflowData) error 
 			}
 			// Continue to return aggregated errors even if this check fails
 		} else if !hasIssues {
-			issueErr := fmt.Errorf("workflow uses safe-outputs.create-issue but repository %s does not have issues enabled. Enable issues in repository settings or remove create-issue from safe-outputs", repo)
-			if returnErr := collector.Add(issueErr); returnErr != nil {
-				return returnErr // Fail-fast mode
+			// Changed to warning instead of error per issue feedback
+			// Strategy: Always try to create the issue at runtime and investigate if it fails
+			warningMsg := fmt.Sprintf("Repository %s may not have issues enabled. The workflow will attempt to create issues at runtime. If creation fails, enable issues in repository settings.", repo)
+			repositoryFeaturesLog.Printf("Warning: %s", warningMsg)
+			if c.verbose {
+				fmt.Fprintln(os.Stderr, console.FormatWarningMessage(warningMsg))
 			}
+			// Increment warning count to indicate validation issue that isn't fatal
+			c.IncrementWarningCount()
 		}
 	}
 

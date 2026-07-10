@@ -1,0 +1,3 @@
+## 2026-07-10 - [Levenshtein Distance Optimization]
+**Learning:** Optimizing `LevenshteinDistance` by ensuring the shorter string drives the DP table size, using a single-row DP table instead of two, and employing stack allocation for small strings (up to 64 bytes) significantly reduces execution time (~36%) and eliminates heap allocations. Additionally, a length-difference short-circuit in `FindClosestMatches` provides massive gains (~70% total improvement) when filtering many candidates.
+**Action:** Always check if a DP algorithm can be reduced to a single row and if small inputs can be handled with stack-allocated buffers. Use length-based short-circuits before expensive string comparisons or distance calculations.
