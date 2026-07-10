@@ -378,6 +378,62 @@ func TestFindGitRootFrom(t *testing.T) {
 	})
 }
 
+func TestValidateGitArg(t *testing.T) {
+	tests := []struct {
+		name     string
+		arg      string
+		expected bool // true for success (nil error), false for failure
+	}{
+		{
+			name:     "valid branch name",
+			arg:      "main",
+			expected: true,
+		},
+		{
+			name:     "valid tag name",
+			arg:      "v1.0.0",
+			expected: true,
+		},
+		{
+			name:     "valid path",
+			arg:      "pkg/gitutil/gitutil.go",
+			expected: true,
+		},
+		{
+			name:     "invalid flag injection",
+			arg:      "--upload-pack",
+			expected: false,
+		},
+		{
+			name:     "invalid short flag",
+			arg:      "-v",
+			expected: false,
+		},
+		{
+			name:     "valid path with hyphen in middle",
+			arg:      "my-path/file.txt",
+			expected: true,
+		},
+		{
+			name:     "empty string",
+			arg:      "",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGitArg(tt.arg)
+			if tt.expected {
+				assert.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "invalid git argument")
+			}
+		})
+	}
+}
+
 func TestReadFileFromHEAD(t *testing.T) {
 	t.Run("reads a committed file with pre-computed root", func(t *testing.T) {
 		gitRoot, err := FindGitRoot()

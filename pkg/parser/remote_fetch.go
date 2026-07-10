@@ -47,6 +47,16 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 		return "", errors.New("git fallback requires a non-empty ref")
 	}
 
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
+
 	githubHost := GetGitHubHostForRepo(owner, repo)
 	if host != "" {
 		githubHost = stringutil.NormalizeGitHubHostURL(host)
@@ -448,6 +458,16 @@ func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 	remoteLog.Printf("Attempting git ls-remote fallback for ref resolution: %s/%s@%s", owner, repo, ref)
 
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
+
 	var githubHost string
 	if host != "" {
 		githubHost = "https://" + host
@@ -625,6 +645,13 @@ func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string
 	// git archive command: git archive --remote=<repo> <ref> <path>
 	// #nosec G204 -- repoURL, ref, and path are from workflow import configuration authored by the
 	// developer; exec.Command with separate args (not shell execution) prevents shell injection.
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(path); err != nil {
+		return nil, err
+	}
+
 	cmd := exec.Command("git", "archive", "--remote="+repoURL, ref, path)
 	archiveOutput, err := cmd.Output()
 	if err != nil {
@@ -695,6 +722,16 @@ func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error
 		githubHost = GetGitHubHostForRepo(owner, repo)
 	}
 	repoURL := fmt.Sprintf("%s/%s/%s.git", githubHost, owner, repo)
+
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
 
 	// Check if ref is a SHA (40 hex characters)
 	isSHA := len(ref) == 40 && gitutil.IsHexString(ref)
@@ -1139,6 +1176,10 @@ func listDirAllFilesForHost(owner, repo, ref, dirPath, host string) ([]string, e
 func listDirAllFilesViaGitForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
 	remoteLog.Printf("Git fallback for listing all dir files: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
 	tmpDir, err := getOrCreateListRepoClone(owner, repo, ref, host)
 	if err != nil {
 		return nil, err
@@ -1276,6 +1317,10 @@ func listContentsRecursivelyWithDepth(client *api.RESTClient, owner, repo, ref, 
 func listDirAllFilesRecursivelyViaGitForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
 	remoteLog.Printf("Git fallback for listing all dir files recursively: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
 	tmpDir, err := getOrCreateListRepoClone(owner, repo, ref, host)
 	if err != nil {
 		return nil, err
@@ -1398,6 +1443,10 @@ func listDirSubdirsForHost(owner, repo, ref, dirPath, host string) ([]string, er
 func listDirSubdirsViaGitForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
 	remoteLog.Printf("Git fallback for listing subdirs: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
 	tmpDir, err := getOrCreateListRepoClone(owner, repo, ref, host)
 	if err != nil {
 		return nil, err
@@ -1459,6 +1508,19 @@ func listDirSubdirsViaPublicAPI(owner, repo, ref, dirPath string) ([]string, err
 
 func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string) ([]string, error) {
 	remoteLog.Printf("Attempting git fallback for listing workflow files: %s/%s@%s (path: %s)", owner, repo, ref, workflowPath)
+
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(workflowPath); err != nil {
+		return nil, err
+	}
 
 	githubHost := GetGitHubHostForRepo(owner, repo)
 	if host != "" {

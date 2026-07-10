@@ -13,6 +13,7 @@ import (
 	"github.com/github/gh-aw/pkg/console"
 	"github.com/github/gh-aw/pkg/constants"
 	"github.com/github/gh-aw/pkg/fileutil"
+	"github.com/github/gh-aw/pkg/gitutil"
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/github/gh-aw/pkg/workflow"
 )
@@ -35,6 +36,10 @@ func ensureTrialRepository(repoSlug string, cloneRepoSlug string, forceDeleteHos
 	parts := strings.Split(repoSlug, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return fmt.Errorf("invalid repository slug format: %s. Expected format: owner/repo. Example: github/gh-aw", repoSlug)
+	}
+
+	if err := gitutil.ValidateGitArg(repoSlug); err != nil {
+		return err
 	}
 
 	// Check if repository already exists
@@ -160,6 +165,10 @@ func ensureTrialRepository(repoSlug string, cloneRepoSlug string, forceDeleteHos
 
 func cleanupTrialRepository(repoSlug string, verbose bool) error {
 	trialRepoLog.Printf("Cleaning up trial repository: %s", repoSlug)
+
+	if err := gitutil.ValidateGitArg(repoSlug); err != nil {
+		return err
+	}
 	if verbose {
 		fmt.Fprintln(os.Stderr, console.FormatInfoMessage("Cleaning up host repository: "+repoSlug))
 	}
@@ -182,6 +191,10 @@ func cleanupTrialRepository(repoSlug string, verbose bool) error {
 
 func cloneTrialHostRepository(repoSlug string, verbose bool) (string, error) {
 	trialRepoLog.Printf("Cloning trial host repository: %s", repoSlug)
+
+	if err := gitutil.ValidateGitArg(repoSlug); err != nil {
+		return "", err
+	}
 	// Create temporary directory
 	tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("gh-aw-trial-%x", time.Now().UnixNano()))
 
@@ -333,6 +346,10 @@ func installWorkflowInTrialMode(ctx context.Context, tempDir string, parsedSpec 
 	}
 	// Note: workflowData is used for validation; secrets are ensured before installWorkflowInTrialMode is called
 	_ = workflowDataList[0]
+
+	if err := gitutil.ValidateGitArg(parsedSpec.WorkflowName); err != nil {
+		return err
+	}
 
 	// Commit and push the changes
 	if err := commitAndPushWorkflow(tempDir, parsedSpec.WorkflowName, opts.Verbose); err != nil {
@@ -535,6 +552,16 @@ func commitAndPushWorkflow(tempDir, workflowName string, verbose bool) error {
 func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, hostRepoSlug string, verbose bool) error {
 	if verbose {
 		fmt.Fprintln(os.Stderr, console.FormatInfoMessage(fmt.Sprintf("Cloning contents from %s into host repository %s", cloneRepoSlug, hostRepoSlug)))
+	}
+
+	if err := gitutil.ValidateGitArg(cloneRepoSlug); err != nil {
+		return err
+	}
+	if err := gitutil.ValidateGitArg(cloneRepoVersion); err != nil {
+		return err
+	}
+	if err := gitutil.ValidateGitArg(hostRepoSlug); err != nil {
+		return err
 	}
 
 	// Save the original working directory to restore it later
