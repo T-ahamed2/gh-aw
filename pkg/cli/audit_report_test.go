@@ -1368,7 +1368,7 @@ func TestExtractPreAgentStepErrors(t *testing.T) {
 		assert.True(t, strings.HasSuffix(errors[0].Message, "..."), "Truncated message should end with ellipsis")
 	})
 
-	t.Run("prioritizes "+"##"+"[error] annotations over last step fallback", func(t *testing.T) {
+	t.Run("prioritizes error annotations over last step fallback", func(t *testing.T) {
 		dir := testutil.TempDir(t, "audit-step-*")
 		workflowLogsDir := filepath.Join(dir, "workflow-logs", "activation")
 		require.NoError(t, os.MkdirAll(workflowLogsDir, 0755))
@@ -1380,15 +1380,15 @@ func TestExtractPreAgentStepErrors(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(workflowLogsDir, "15_Complete job.txt"), []byte(completeJobLog), 0600))
 
 		errors := extractPreAgentStepErrors(dir)
-		require.NotNil(t, errors, "Should return errors from "+"##"+"[error] annotations")
-		require.Len(t, errors, 1, "Should return one error for the step with "+"##"+"[error]")
-		assert.Equal(t, "activation/Generate agentic run info", errors[0].File, "Should reference the step with "+"##"+"[error], not Complete job")
+		require.NotNil(t, errors, "Should return errors from error annotations")
+		require.Len(t, errors, 1, "Should return one error for the step with error marker")
+		assert.Equal(t, "activation/Generate agentic run info", errors[0].File, "Should reference the step with error marker, not Complete job")
 		assert.Contains(t, errors[0].Message, "Lockdown mode is enabled", "Message should contain the actual "+"##"+"[error] annotation content")
 		assert.NotContains(t, errors[0].Message, "Evaluate and set job outputs", "Message should not contain Complete job cleanup content")
 		assert.NotContains(t, errors[0].Message, "2026-02-23T", "Should strip GHA timestamps from "+"##"+"[error] lines")
 	})
 
-	t.Run("returns "+"##"+"[error] annotations from multiple steps", func(t *testing.T) {
+	t.Run("returns error annotations from multiple steps", func(t *testing.T) {
 		dir := testutil.TempDir(t, "audit-step-*")
 		workflowLogsDir := filepath.Join(dir, "workflow-logs", "agent")
 		require.NoError(t, os.MkdirAll(workflowLogsDir, 0755))
@@ -1403,14 +1403,14 @@ func TestExtractPreAgentStepErrors(t *testing.T) {
 
 		errors := extractPreAgentStepErrors(dir)
 		require.NotNil(t, errors, "Should return errors")
-		assert.Len(t, errors, 2, "Should return one ErrorInfo per step with "+"##"+"[error] annotations")
+		assert.Len(t, errors, 2, "Should return one ErrorInfo per step with error annotations")
 		// All returned errors should be from steps with ##[error], not the cleanup step
 		for _, e := range errors {
 			assert.NotEqual(t, "agent/Complete job", e.File, "Should not include cleanup step in errors")
 		}
 	})
 
-	t.Run("falls back to last step when no "+"##"+"[error] annotations exist", func(t *testing.T) {
+	t.Run("falls back to last step when no error annotations exist", func(t *testing.T) {
 		dir := testutil.TempDir(t, "audit-step-*")
 		workflowLogsDir := filepath.Join(dir, "workflow-logs", "agent")
 		require.NoError(t, os.MkdirAll(workflowLogsDir, 0755))
@@ -1450,7 +1450,7 @@ func TestExtractPreAgentStepErrors(t *testing.T) {
 			"Error should contain the actual error from the step log")
 	})
 
-	t.Run("extracts "+"##"+"[error] from flat job log files", func(t *testing.T) {
+	t.Run("extracts error marker from flat job log files", func(t *testing.T) {
 		// GitHub Actions log zips may use a flat structure where each job is a single file
 		// at the root of workflow-logs/ (e.g., 3_activation.txt) rather than a subdirectory.
 		dir := testutil.TempDir(t, "audit-step-*")
@@ -1469,7 +1469,7 @@ func TestExtractPreAgentStepErrors(t *testing.T) {
 		assert.NotContains(t, errors[0].Message, "2026-02-23T", "Should strip GHA timestamps")
 	})
 
-	t.Run("falls back to last flat job log when no "+"##"+"[error] in flat files", func(t *testing.T) {
+	t.Run("falls back to last flat job log when no error marker in flat files", func(t *testing.T) {
 		dir := testutil.TempDir(t, "audit-step-*")
 		workflowLogsDir := filepath.Join(dir, "workflow-logs")
 		require.NoError(t, os.MkdirAll(workflowLogsDir, 0755))
