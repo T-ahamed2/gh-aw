@@ -41,7 +41,7 @@ func NormalizeWhitespace(content string) string {
 	// Join back and ensure exactly one trailing newline if content is not empty
 	normalized := strings.Join(lines, "\n")
 	normalized = strings.TrimRight(normalized, "\n")
-	if len(normalized) > 0 {
+	if normalized != "" {
 		normalized += "\n"
 	}
 
@@ -95,10 +95,10 @@ func FormatList(items []string) string {
 // This is useful for cleaning up content generated with extra indentation,
 // such as heredoc bodies.
 func NormalizeLeadingWhitespace(content string) string {
-	lines := strings.Split(content, "\n")
-	if len(lines) == 0 {
+	if content == "" {
 		return content
 	}
+	lines := strings.Split(content, "\n")
 
 	// Find minimum leading whitespace (excluding empty lines)
 	minLeading := -1
