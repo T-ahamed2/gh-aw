@@ -70,7 +70,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp directory for repository listing: %w. Suggestion: check your system's temp directory permissions and ensure sufficient disk space is available.", err)
+		return "", fmt.Errorf("creating temp directory for repository listing: %w; requires write access to the system temporary directory. Example: check $TMPDIR permissions", err)
 	}
 
 	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
@@ -80,7 +80,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 			remoteLog.Printf("Failed to clean up temp directory %q: %v", tmpDir, cleanupErr)
 		}
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return "", fmt.Errorf("failed to clone repository for %s/%s@%s: %w. requires valid repository access and the specified branch or tag should exist. Example: gh aw add owner/repo@main", owner, repo, ref, err)
+		return "", fmt.Errorf("cloning repository %s/%s@%s: %w; requires valid repository access and an existing branch. Example: gh aw add owner/repo@main", owner, repo, ref, err)
 	}
 
 	existingDir, found := func() (string, bool) {
@@ -359,7 +359,7 @@ func downloadIncludeFromWorkflowSpec(spec string, cache *ImportCache) (string, e
 	remoteLog.Printf("Fetching file from GitHub: %s/%s/%s@%s", owner, repo, filePath, ref)
 	content, err := downloadFileFromGitHub(owner, repo, filePath, ref)
 	if err != nil {
-		return "", fmt.Errorf("failed to download include from %s: %w. requires an active internet connection and valid GitHub credentials. Example: gh auth login", spec, err)
+		return "", fmt.Errorf("downloading include from %s: %w; requires an active internet connection and valid GitHub credentials. Example: gh auth login", spec, err)
 	}
 	remoteLog.Printf("Successfully downloaded file: size=%d bytes", len(content))
 
@@ -411,7 +411,7 @@ func resolveWorkflowSpecSHAForCache(owner, repo, ref string, cache *ImportCache)
 func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 	tempFile, err := os.CreateTemp("", "gh-aw-include-*.md")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp file for downloaded include: %w. requires sufficient permissions and disk space in the system's temporary directory. Suggestion: check your system's temp directory settings.", err)
+		return "", fmt.Errorf("creating temp file for downloaded include: %w; requires write access and disk space in the temporary directory. Example: ensure /tmp has free space", err)
 	}
 	cleanupOnError := true
 	fileClosed := false
@@ -432,11 +432,11 @@ func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 			remoteLog.Printf("Warning: failed to close temp file during cleanup: %v", closeErr)
 		}
 		fileClosed = true
-		return "", fmt.Errorf("failed to write temp file: %w", err)
+		return "", fmt.Errorf("writing temp file: %w; requires available disk space and write permissions. Example: check 'df -h /tmp'", err)
 	}
 	if err := tempFile.Close(); err != nil {
 		fileClosed = true
-		return "", fmt.Errorf("failed to close temp file: %w", err)
+		return "", fmt.Errorf("closing temp file: %w; requires a responsive file system with available space for buffer flush. Example: ensure the volume is not read-only", err)
 	}
 	cleanupOnError = false
 	fileClosed = true
@@ -471,7 +471,7 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 		}
 
 		if err != nil {
-			return "", fmt.Errorf("failed to resolve ref via git ls-remote: %w", err)
+			return "", fmt.Errorf("resolving ref via git ls-remote: %w; requires git to be installed and network access to the repository. Example: git ls-remote https://github.com/owner/repo", err)
 		}
 	}
 
@@ -758,7 +758,7 @@ func checkRemoteSymlink(client *api.RESTClient, owner, repo, dirPath, ref string
 
 	// If the response is an array, this is a directory listing — not a symlink
 	trimmed := strings.TrimSpace(string(raw))
-	if len(trimmed) > 0 && trimmed[0] == '[' {
+	if trimmed != "" && trimmed[0] == '[' {
 		remoteLog.Printf("Path component %s is a directory (not a symlink)", dirPath)
 		return "", false, nil
 	}
