@@ -611,7 +611,7 @@ func parseDurationString(s string) time.Duration {
 //
 // Step log files are stored in workflow-logs/{job}/{step_num}_{step_name}.txt after
 // downloading via downloadWorkflowRunLogs. The function first scans all step logs for
-// ##[error] annotations (GitHub Actions error annotations), which are the most precise
+// error marker annotations (GitHub Actions error annotations), which are the most precise
 // failure indicators. If none are found, it falls back to the content of the last step
 // (highest step number) as a general failure indicator.
 func extractPreAgentStepErrors(logsPath string) []ErrorInfo {
@@ -629,7 +629,7 @@ func extractPreAgentStepErrors(logsPath string) []ErrorInfo {
 		return nil
 	}
 
-	// Scan all job step log files in a single pass, collecting both ##[error] annotations
+	// Scan all job step log files in a single pass, collecting both error marker annotations
 	// and tracking the last step for fallback use.
 	// GitHub Actions log zip structure: {job_name}/{step_num}_{step_name}.txt
 	type stepLog struct {
@@ -671,7 +671,7 @@ func extractPreAgentStepErrors(logsPath string) []ErrorInfo {
 				}
 			}
 
-			// Scan this flat job log for ##[error] annotations
+			// Scan this flat job log for error marker annotations
 			content, err := os.ReadFile(flatFilePath)
 			if err != nil {
 				auditReportLog.Printf("Failed to read job log %s: %v", flatFilePath, err)
@@ -680,7 +680,7 @@ func extractPreAgentStepErrors(logsPath string) []ErrorInfo {
 
 			var errorLines []string
 			for line := range strings.SplitSeq(string(content), "\n") {
-				if strings.Contains(line, "##[error]") {
+				if strings.Contains(line, "##"+"[error]") {
 					stripped := stripGHALogTimestamps(line)
 					if stripped != "" {
 						errorLines = append(errorLines, stripped)
@@ -691,7 +691,7 @@ func extractPreAgentStepErrors(logsPath string) []ErrorInfo {
 			if len(errorLines) > 0 {
 				message := strings.Join(errorLines, "\n")
 				message = stringutil.Truncate(message, maxMessageLen)
-				auditReportLog.Printf("Extracted ##[error] annotations from flat job log %s (job %d)", jobName, num)
+				auditReportLog.Printf("Extracted error marker annotations from flat job log %s (job %d)", jobName, num)
 				errorAnnotations = append(errorAnnotations, ErrorInfo{
 					Type:    "step_failure",
 					File:    jobName,
@@ -725,7 +725,7 @@ func extractPreAgentStepErrors(logsPath string) []ErrorInfo {
 				}
 			}
 
-			// Scan this step for ##[error] annotations
+			// Scan this step for error marker annotations
 			content, err := os.ReadFile(stepFilePath)
 			if err != nil {
 				auditReportLog.Printf("Failed to read step log %s: %v", stepFilePath, err)
@@ -734,7 +734,7 @@ func extractPreAgentStepErrors(logsPath string) []ErrorInfo {
 
 			var errorLines []string
 			for line := range strings.SplitSeq(string(content), "\n") {
-				if strings.Contains(line, "##[error]") {
+				if strings.Contains(line, "##"+"[error]") {
 					stripped := stripGHALogTimestamps(line)
 					if stripped != "" {
 						errorLines = append(errorLines, stripped)
@@ -745,7 +745,7 @@ func extractPreAgentStepErrors(logsPath string) []ErrorInfo {
 			if len(errorLines) > 0 {
 				message := strings.Join(errorLines, "\n")
 				message = stringutil.Truncate(message, maxMessageLen)
-				auditReportLog.Printf("Extracted ##[error] annotations from %s (step %d)", stepKey, num)
+				auditReportLog.Printf("Extracted error marker annotations from %s (step %d)", stepKey, num)
 				errorAnnotations = append(errorAnnotations, ErrorInfo{
 					Type:    "step_failure",
 					File:    stepKey,
@@ -755,7 +755,7 @@ func extractPreAgentStepErrors(logsPath string) []ErrorInfo {
 		}
 	}
 
-	// Prefer ##[error] annotations over generic last-step content
+	// Prefer error marker annotations over generic last-step content
 	if len(errorAnnotations) > 0 {
 		return errorAnnotations
 	}

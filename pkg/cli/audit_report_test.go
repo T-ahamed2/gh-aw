@@ -1416,7 +1416,7 @@ func TestExtractPreAgentStepErrors(t *testing.T) {
 		require.NoError(t, os.MkdirAll(workflowLogsDir, 0755))
 		// Step 3 has non-annotated error content
 		require.NoError(t, os.WriteFile(filepath.Join(workflowLogsDir, "3_Some step.txt"), []byte("Some content"), 0600))
-		// Step 7 is the last step and has the actual failure (no ##[error] prefix)
+		// Step 7 is the last step and has the actual failure (no error marker prefix)
 		require.NoError(t, os.WriteFile(filepath.Join(workflowLogsDir, "7_Failing step.txt"), []byte("Error: installation failed"), 0600))
 
 		errors := extractPreAgentStepErrors(dir)
@@ -1488,14 +1488,14 @@ func TestExtractPreAgentStepErrors(t *testing.T) {
 		dir := testutil.TempDir(t, "audit-step-*")
 		workflowLogsDir := filepath.Join(dir, "workflow-logs")
 		require.NoError(t, os.MkdirAll(workflowLogsDir, 0755))
-		// Flat job log with ##[error]
+		// Flat job log with error annotation
 		require.NoError(t, os.WriteFile(filepath.Join(workflowLogsDir, "2_activation.txt"),
-			[]byte("2024-01-01T00:00:01Z ##[error]Flat job error"), 0600))
-		// Subdirectory job with ##[error] in a step
+			[]byte("2024-01-01T00:00:01Z ##"+"[error]Flat job error"), 0600))
+		// Subdirectory job with error annotation in a step
 		agentDir := filepath.Join(workflowLogsDir, "agent")
 		require.NoError(t, os.MkdirAll(agentDir, 0755))
 		require.NoError(t, os.WriteFile(filepath.Join(agentDir, "5_Run agent.txt"),
-			[]byte("2024-01-01T00:00:02Z ##[error]Subdirectory step error"), 0600))
+			[]byte("2024-01-01T00:00:02Z ##"+"[error]Subdirectory step error"), 0600))
 
 		errors := extractPreAgentStepErrors(dir)
 		require.NotNil(t, errors, "Should extract errors from both flat and subdirectory logs")
