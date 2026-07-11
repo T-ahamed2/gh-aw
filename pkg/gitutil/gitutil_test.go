@@ -378,6 +378,52 @@ func TestFindGitRootFrom(t *testing.T) {
 	})
 }
 
+func TestValidateGitArg(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		expectError bool
+	}{
+		{
+			name:        "valid argument",
+			input:       "main",
+			expectError: false,
+		},
+		{
+			name:        "valid owner/repo",
+			input:       "github/gh-aw",
+			expectError: false,
+		},
+		{
+			name:        "invalid single hyphen",
+			input:       "-v",
+			expectError: true,
+		},
+		{
+			name:        "invalid double hyphen",
+			input:       "--version",
+			expectError: true,
+		},
+		{
+			name:        "empty string",
+			input:       "",
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGitArg(tt.input)
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "must not start with '-'")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestReadFileFromHEAD(t *testing.T) {
 	t.Run("reads a committed file with pre-computed root", func(t *testing.T) {
 		gitRoot, err := FindGitRoot()

@@ -142,6 +142,16 @@ func FindGitRootFrom(startDir string) (string, error) {
 	}
 }
 
+// ValidateGitArg checks if an argument is safe to pass to a git or gh command.
+// It returns an error if the argument starts with a hyphen '-', which could
+// be interpreted as a command-line flag (argument injection).
+func ValidateGitArg(arg string) error {
+	if strings.HasPrefix(arg, "-") {
+		return fmt.Errorf("invalid git argument %q: must not start with '-' to prevent flag injection", arg)
+	}
+	return nil
+}
+
 // ReadFileFromHEAD reads a file from git HEAD using a pre-computed repository root.
 // filePath is resolved with filepath.Abs, so relative paths are interpreted from the
 // current process working directory (not gitRoot). Prefer passing an absolute path
