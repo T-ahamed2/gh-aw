@@ -60,15 +60,12 @@ func sortMatches(matches []match) {
 }
 
 func limitResults(matches []match, maxResults int) []string {
-	n := len(matches)
-	if maxResults < n {
-		n = maxResults
-	}
+	n := min(len(matches), maxResults)
 	if n <= 0 {
 		return nil
 	}
 	results := make([]string, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		results[i] = matches[i].value
 	}
 	return results
