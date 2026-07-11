@@ -1,0 +1,4 @@
+## 2025-05-22 - Git Argument Injection Defense-in-Depth
+**Vulnerability:** Risk of flag injection in `git` and `gh` command executions when dynamic inputs (refs, paths, slugs) start with a hyphen.
+**Learning:** `exec.Command` prevents shell injection by passing arguments directly to the OS, but it does not prevent argument injection. If a dynamic input starts with a hyphen, the underlying CLI tool may interpret it as a flag rather than a positional argument (e.g., a branch name or file path).
+**Prevention:** Implement two layers of defense: 1) Explicitly validate dynamic inputs to ensure they do not start with a hyphen (e.g., using `gitutil.ValidateGitArg`). 2) Use the `--` separator in command constructions (e.g., `git clone -- <url> <dir>`) to signal the end of options and the start of positional arguments.
