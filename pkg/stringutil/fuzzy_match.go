@@ -10,75 +10,67 @@ import (
 
 var fuzzyMatchLog = logger.New("stringutil:fuzzy_match")
 
+type match struct {
+	value    string
+	distance int
+}
+
 // FindClosestMatches finds the closest matching strings using Levenshtein distance.
 // It returns up to maxResults matches that have a Levenshtein distance of 3 or less.
 // Results are sorted by distance (closest first), then alphabetically for ties.
-//
-// This function is useful for "Did you mean?" suggestions when a user provides
-// an unrecognized value (e.g., a typo in an engine name or event type).
 func FindClosestMatches(target string, candidates []string, maxResults int) []string {
 	fuzzyMatchLog.Printf("FindClosestMatches: target=%q, candidates=%d, maxResults=%d", target, len(candidates), maxResults)
-	type match struct {
-		value    string
-		distance int
-	}
-
-	const maxDistance = 3 // Maximum acceptable Levenshtein distance
-
+	const maxDistance = 3
 	var matches []match
 	targetLower := strings.ToLower(target)
 
 	for _, candidate := range candidates {
 		candidateLower := strings.ToLower(candidate)
-
-		// Skip exact matches
 		if targetLower == candidateLower {
 			continue
 		}
-
-		// Short-circuit: if length difference is greater than maxDistance,
-		// the Levenshtein distance is guaranteed to be greater than maxDistance.
-		lenDiff := len(targetLower) - len(candidateLower)
-		if lenDiff < 0 {
-			lenDiff = -lenDiff
-		}
-		if lenDiff > maxDistance {
+		if absDiff(len(targetLower), len(candidateLower)) > maxDistance {
 			continue
 		}
-
-		distance := LevenshteinDistance(targetLower, candidateLower)
-
-		// Only include if distance is within acceptable range
-		if distance <= maxDistance {
-			matches = append(matches, match{value: candidate, distance: distance})
+		if d := LevenshteinDistance(targetLower, candidateLower); d <= maxDistance {
+			matches = append(matches, match{value: candidate, distance: d})
 		}
 	}
 
-	// Sort by distance (lower is better), then alphabetically for ties
+	sortMatches(matches)
+	results := limitResults(matches, maxResults)
+	fuzzyMatchLog.Printf("FindClosestMatches: returning %d match(es) within distance %d", len(results), maxDistance)
+	return results
+}
+
+func absDiff(a, b int) int {
+	if a > b {
+		return a - b
+	}
+	return b - a
+}
+
+func sortMatches(matches []match) {
 	slices.SortFunc(matches, func(a, b match) int {
 		if a.distance != b.distance {
-			if a.distance < b.distance {
-				return -1
-			}
-			return 1
+			return a.distance - b.distance
 		}
-		switch {
-		case a.value < b.value:
-			return -1
-		case a.value > b.value:
-			return 1
-		default:
-			return 0
-		}
+		return strings.Compare(a.value, b.value)
 	})
+}
 
-	// Return top matches
-	var results []string
-	for i := 0; i < len(matches) && i < maxResults; i++ {
-		results = append(results, matches[i].value)
+func limitResults(matches []match, maxResults int) []string {
+	n := len(matches)
+	if maxResults < n {
+		n = maxResults
 	}
-
-	fuzzyMatchLog.Printf("FindClosestMatches: returning %d match(es) within distance %d", len(results), maxDistance)
+	if n <= 0 {
+		return nil
+	}
+	results := make([]string, n)
+	for i := 0; i < n; i++ {
+		results[i] = matches[i].value
+	}
 	return results
 }
 
