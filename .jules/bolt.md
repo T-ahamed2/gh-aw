@@ -1,0 +1,3 @@
+## 2026-07-11 - Optimized fuzzy matching by eliminating heap allocations
+**Learning:** Using a single-row DP table for Levenshtein distance and ensuring the shorter string drives the row size significantly reduces memory pressure. Combined with a stack-allocated buffer (e.g., [65]int) for common string lengths, heap allocations can be eliminated entirely for the core algorithm. Adding a short-circuit length difference check in the search loop further avoids unnecessary work.
+**Action:** Always consider if a small fixed-size buffer can satisfy common cases for dynamic programming or slice operations to avoid heap allocations in hot paths.
