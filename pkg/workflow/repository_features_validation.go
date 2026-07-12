@@ -74,75 +74,60 @@ func (c *Compiler) validateRepositoryFeatures(workflowData *WorkflowData) error 
 		return nil
 	}
 
-	repositoryFeaturesLog.Print("Validating repository features for safe-outputs")
-
-	// Get the repository from the current git context
-	// This will work when running in a git repository
 	repo, err := getCurrentRepository()
 	if err != nil {
 		repositoryFeaturesLog.Printf("Could not determine repository: %v", err)
-		// Don't fail if we can't determine the repository (e.g., not in a git repo)
-		// This allows validation to pass in non-git environments
 		return nil
 	}
 
 	repositoryFeaturesLog.Printf("Checking repository features for: %s", repo)
-
-	// Collect all validation errors using ErrorCollector
 	collector := NewErrorCollector(c.failFast)
 
-	// Check if discussions are enabled when create-discussion is configured
-	needsDiscussions := workflowData.SafeOutputs.CreateDiscussions != nil
-
-	if needsDiscussions {
-		hasDiscussions, err := checkRepositoryHasDiscussions(repo, c.verbose)
-
-		if err != nil {
-			// If we can't check, log but don't fail
-			// This could happen due to network issues or auth problems
-			repositoryFeaturesLog.Printf("Warning: Could not check if discussions are enabled: %v", err)
-			if c.verbose {
-				fmt.Fprintln(os.Stderr, console.FormatWarningMessage(
-					fmt.Sprintf("Could not verify if discussions are enabled: %v", err)))
-			}
-			// Continue checking other features even if this check fails
-		} else if !hasDiscussions {
-			// Changed to warning instead of error per issue feedback
-			// Strategy: Always try to create the discussion at runtime and investigate if it fails
-			// The runtime create_discussion handler will provide better error messages if creation fails
-			warningMsg := fmt.Sprintf("Repository %s may not have discussions enabled. The workflow will attempt to create discussions at runtime. If creation fails, enable discussions in repository settings.", repo)
-			repositoryFeaturesLog.Printf("Warning: %s", warningMsg)
-			if c.verbose {
-				fmt.Fprintln(os.Stderr, console.FormatWarningMessage(warningMsg))
-			}
-			// Don't add to error collector - this is a warning, not an error
-		}
-	}
-
-	// Check if issues are enabled when create-issue is configured
-	if workflowData.SafeOutputs.CreateIssues != nil {
-		hasIssues, err := checkRepositoryHasIssues(repo, c.verbose)
-
-		if err != nil {
-			// If we can't check, log but don't fail
-			repositoryFeaturesLog.Printf("Warning: Could not check if issues are enabled: %v", err)
-			if c.verbose {
-				fmt.Fprintln(os.Stderr, console.FormatWarningMessage(
-					fmt.Sprintf("Could not verify if issues are enabled: %v", err)))
-			}
-			// Continue to return aggregated errors even if this check fails
-		} else if !hasIssues {
-			issueErr := fmt.Errorf("workflow uses safe-outputs.create-issue but repository %s does not have issues enabled. Enable issues in repository settings or remove create-issue from safe-outputs", repo)
-			if returnErr := collector.Add(issueErr); returnErr != nil {
-				return returnErr // Fail-fast mode
-			}
-		}
-	}
+	c.validateDiscussionsFeature(repo, workflowData, collector)
+	c.validateIssuesFeature(repo, workflowData, collector)
 
 	repositoryFeaturesLog.Printf("Repository features validation completed: error_count=%d", collector.Count())
-
-	// Return aggregated errors with formatted output
 	return collector.FormattedError("repository features")
+}
+
+func (c *Compiler) validateDiscussionsFeature(repo string, workflowData *WorkflowData, collector *ErrorCollector) {
+	if workflowData.SafeOutputs.CreateDiscussions == nil {
+		return
+	}
+
+	hasDiscussions, err := checkRepositoryHasDiscussions(repo, c.verbose)
+	if err != nil {
+		repositoryFeaturesLog.Printf("Warning: Could not check if discussions are enabled: %v", err)
+		return
+	}
+
+	if !hasDiscussions {
+		warningMsg := fmt.Sprintf("Repository %s may not have discussions enabled. The workflow will attempt to create discussions at runtime. If creation fails, enable discussions in repository settings.", repo)
+		repositoryFeaturesLog.Printf("Warning: %s", warningMsg)
+		if c.verbose {
+			fmt.Fprintln(os.Stderr, console.FormatWarningMessage(warningMsg))
+		}
+	}
+}
+
+func (c *Compiler) validateIssuesFeature(repo string, workflowData *WorkflowData, collector *ErrorCollector) {
+	if workflowData.SafeOutputs.CreateIssues == nil {
+		return
+	}
+
+	hasIssues, err := checkRepositoryHasIssues(repo, c.verbose)
+	if err != nil {
+		repositoryFeaturesLog.Printf("Warning: Could not check if issues are enabled: %v", err)
+		return
+	}
+
+	if !hasIssues {
+		warningMsg := fmt.Sprintf("Repository %s may not have issues enabled. The workflow will attempt to create issues at runtime. If creation fails, enable issues in repository settings.", repo)
+		repositoryFeaturesLog.Printf("Warning: %s", warningMsg)
+		if c.verbose {
+			fmt.Fprintln(os.Stderr, console.FormatWarningMessage(warningMsg))
+		}
+	}
 }
 
 // getCurrentRepository gets the current repository from git context (with caching)

@@ -42,7 +42,7 @@ func BenchmarkLevenshteinDistance_Large(b *testing.B) {
 
 func BenchmarkFindClosestMatches_Large(b *testing.B) {
 	candidates := make([]string, 1000)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		candidates[i] = fmt.Sprintf("candidate-%d", i)
 	}
 	target := "candidate-999-typo"
