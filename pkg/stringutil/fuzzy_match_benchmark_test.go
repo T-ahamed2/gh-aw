@@ -15,7 +15,7 @@ func BenchmarkFindClosestMatches(b *testing.B) {
 	maxResults := 3
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		FindClosestMatches(target, candidates, maxResults)
 	}
 }
@@ -25,7 +25,7 @@ func BenchmarkLevenshteinDistance_Small(b *testing.B) {
 	s2 := "copiliot"
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		LevenshteinDistance(s1, s2)
 	}
 }
@@ -35,7 +35,7 @@ func BenchmarkLevenshteinDistance_Large(b *testing.B) {
 	s2 := "extremely-long-string-to-test-performance-of-levenshtein-distance-algorith"
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		LevenshteinDistance(s1, s2)
 	}
 }
@@ -49,7 +49,7 @@ func BenchmarkFindClosestMatches_Large(b *testing.B) {
 	maxResults := 5
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		FindClosestMatches(target, candidates, maxResults)
 	}
 }
