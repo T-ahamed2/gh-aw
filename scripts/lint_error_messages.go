@@ -53,7 +53,7 @@ func main() {
 	fmt.Println()
 
 	// Parse directories
-	dirs := []string{"pkg/workflow", "pkg/cli"}
+	dirs := []string{"pkg/workflow", "pkg/cli", "pkg/gitutil"}
 
 	allStats := make(map[string]*FileStats)
 	totalMessages := 0
