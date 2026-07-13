@@ -69,7 +69,7 @@ func IsValidFullSHA(s string) bool {
 // in external Git or GitHub CLI command executions.
 func ValidateGitArg(arg string) error {
 	if strings.HasPrefix(arg, "-") {
-		return fmt.Errorf("invalid git argument %q: must not start with '-'", arg)
+		return fmt.Errorf("invalid git argument %v; positional arguments should not start with a hyphen; Example: main", arg)
 	}
 	return nil
 }
@@ -97,13 +97,13 @@ func FindGitRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		gitutilLog.Printf("Failed to get current directory: %v", err)
-		return "", fmt.Errorf("failed to get current directory: %w", err)
+		return "", fmt.Errorf("cannot get current directory; access requires appropriate process permissions; Example: cd ..: %w", err)
 	}
 
 	root, err := FindGitRootFrom(dir)
 	if err != nil {
 		gitutilLog.Printf("Failed to find git root: %v", err)
-		return "", err
+		return "", fmt.Errorf("cannot find git root; command should be run within a valid Git repository; Example: git init: %w", err)
 	}
 
 	gitutilLog.Printf("Found git root: %s", root)
@@ -117,7 +117,7 @@ func FindGitRoot() (string, error) {
 func FindGitRootFrom(startDir string) (string, error) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve absolute path for %q: %w", startDir, err)
+		return "", fmt.Errorf("cannot resolve absolute path for %v; path should be valid; Example: ./repo: %w", startDir, err)
 	}
 	dir = filepath.Clean(dir)
 	for {
@@ -133,7 +133,7 @@ func FindGitRootFrom(startDir string) (string, error) {
 			if info.Mode().IsRegular() {
 				data, readErr := os.ReadFile(gitPath)
 				if readErr != nil {
-					return "", fmt.Errorf("failed to read .git file at %q: %w", gitPath, readErr)
+					return "", fmt.Errorf("cannot read .git file at %v; file should be readable; Example: chmod 644 %v: %w", gitPath, gitPath, readErr)
 				}
 				if strings.HasPrefix(strings.TrimSpace(string(data)), "gitdir:") {
 					return dir, nil
@@ -141,7 +141,7 @@ func FindGitRootFrom(startDir string) (string, error) {
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
 			// Unexpected error (e.g. permission denied) — surface it.
-			return "", fmt.Errorf("failed to stat %q: %w", gitPath, err)
+			return "", fmt.Errorf("cannot stat %v; path should be accessible; Example: ls %v: %w", gitPath, gitPath, err)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -158,24 +158,24 @@ func FindGitRootFrom(startDir string) (string, error) {
 // Use this when the caller already knows the git root (e.g. from a cached value).
 func ReadFileFromHEAD(filePath, gitRoot string) (string, error) {
 	if gitRoot == "" {
-		return "", fmt.Errorf("gitRoot must not be empty when reading %q from HEAD", filePath)
+		return "", fmt.Errorf("failed to read %v from HEAD; gitRoot should not be empty; Example: gitRoot: .", filePath)
 	}
 
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
-		return "", fmt.Errorf("cannot resolve absolute path for %q: %w", filePath, err)
+		return "", fmt.Errorf("cannot resolve absolute path for %v; path should be valid; Example: file.txt: %w", filePath, err)
 	}
 
 	// git show requires the path to be relative to the repository root and to use
 	// forward slashes even on Windows.
 	relPath, err := filepath.Rel(gitRoot, absPath)
 	if err != nil {
-		return "", fmt.Errorf("cannot compute path of %q relative to git root %q: %w", absPath, gitRoot, err)
+		return "", fmt.Errorf("cannot compute path of %v relative to git root %v; path should be within repository; Example: repo/file: %w", absPath, gitRoot, err)
 	}
 
 	// Reject paths that escape the repository (e.g. "../secret").
 	if strings.HasPrefix(relPath, "..") {
-		return "", fmt.Errorf("path %q is outside the git repository root %q", filePath, gitRoot)
+		return "", fmt.Errorf("path %v is outside the git repository root %v; file should be within the repository; Example: .github/workflows/main.md", filePath, gitRoot)
 	}
 
 	relPath = filepath.ToSlash(relPath)
@@ -186,7 +186,7 @@ func ReadFileFromHEAD(filePath, gitRoot string) (string, error) {
 	output, err := cmd.Output()
 	if err != nil {
 		gitutilLog.Printf("File %q not found in HEAD commit: %v", filePath, err)
-		return "", fmt.Errorf("file %q not found in HEAD commit: %w", filePath, err)
+		return "", fmt.Errorf("file %v not found in HEAD commit; file should be committed; Example: git add %v: %w", filePath, filePath, err)
 	}
 	return string(output), nil
 }

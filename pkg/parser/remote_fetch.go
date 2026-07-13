@@ -483,7 +483,7 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 		for _, prefix := range []string{"refs/heads/", "refs/tags/"} {
 			cmd = exec.Command("git", "ls-remote", repoURL, prefix+ref)
 			output, err = cmd.Output()
-			if err == nil && len(output) > 0 {
+			if err == nil && string(output) != "" {
 				break
 			}
 		}
@@ -673,7 +673,7 @@ func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string
 	// git archive command: git archive --remote=<repo> <ref> <path>
 	// #nosec G204 -- repoURL, ref, and path are from workflow import configuration authored by the
 	// developer; exec.Command with separate args (not shell execution) prevents shell injection.
-	cmd := exec.Command("git", "archive", "--remote="+repoURL, ref, path)
+	cmd := exec.CommandContext(ctx, "git", "archive", "--remote="+repoURL, ref, path)
 	archiveOutput, err := cmd.Output()
 	if err != nil {
 		// If git archive fails, try with git clone + git show as a fallback
@@ -818,7 +818,7 @@ func checkRemoteSymlink(client *api.RESTClient, owner, repo, dirPath, ref string
 
 	// If the response is an array, this is a directory listing — not a symlink
 	trimmed := strings.TrimSpace(string(raw))
-	if len(trimmed) > 0 && trimmed[0] == '[' {
+	if trimmed != "" && trimmed[0] == '[' {
 		remoteLog.Printf("Path component %s is a directory (not a symlink)", dirPath)
 		return "", false, nil
 	}
