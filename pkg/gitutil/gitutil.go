@@ -65,6 +65,15 @@ func IsValidFullSHA(s string) bool {
 	return fullSHARegex.MatchString(s)
 }
 
+// ValidateGitArg rejects hyphen-prefixed strings to prevent argument injection
+// in external Git or GitHub CLI command executions.
+func ValidateGitArg(arg string) error {
+	if strings.HasPrefix(arg, "-") {
+		return fmt.Errorf("invalid git argument %q: must not start with '-'", arg)
+	}
+	return nil
+}
+
 // ExtractBaseRepo extracts the base repository (owner/repo) from a repository path
 // that may include subfolders.
 // For "actions/checkout" -> "actions/checkout"

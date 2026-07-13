@@ -42,6 +42,15 @@ var gitListCloneCache = struct {
 }
 
 func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return "", errors.New("git fallback requires a non-empty ref")
@@ -446,6 +455,15 @@ func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 // resolveRefToSHAViaGit resolves a git ref to SHA using git ls-remote
 // This is a fallback for when GitHub API authentication fails
 func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
 	remoteLog.Printf("Attempting git ls-remote fallback for ref resolution: %s/%s@%s", owner, repo, ref)
 
 	var githubHost string
@@ -500,6 +518,15 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 
 // resolveRefToSHA resolves a git ref (branch, tag, or SHA) to its commit SHA
 func resolveRefToSHA(owner, repo, ref, host string) (string, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
 	// If ref is already a full SHA (40 hex characters), return it as-is
 	if len(ref) == 40 && gitutil.IsHexString(ref) {
 		return ref, nil
@@ -560,6 +587,15 @@ func buildCommitLookupAPIPath(owner, repo, ref string) string {
 // unauthenticated call to the public GitHub API. Used as a last-resort fallback
 // when both authenticated API and git ls-remote fail.
 func resolveRefToSHAViaPublicAPI(owner, repo, ref string) (string, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return "", err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
 	remoteLog.Printf("Attempting unauthenticated public API ref resolution for %s/%s@%s", owner, repo, ref)
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits/%s",
 		owner, repo, url.PathEscape(ref))
@@ -598,6 +634,18 @@ func resolveRefToSHAViaPublicAPI(owner, repo, ref string) (string, error) {
 // downloadFileViaGit downloads a file from a Git repository using git commands
 // This is a fallback for when GitHub API authentication fails
 func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string) ([]byte, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(path); err != nil {
+		return nil, err
+	}
 	remoteLog.Printf("Attempting git fallback for %s/%s/%s@%s", owner, repo, path, ref)
 
 	// First, try via raw.githubusercontent.com — no auth required for public repos and
@@ -679,6 +727,18 @@ func downloadFileViaRawURL(ctx context.Context, owner, repo, filePath, ref strin
 // downloadFileViaGitClone downloads a file by shallow cloning the repository
 // This is used as a fallback when git archive doesn't work
 func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(path); err != nil {
+		return nil, err
+	}
 	remoteLog.Printf("Attempting git clone fallback for %s/%s/%s@%s", owner, repo, path, ref)
 
 	// Create a temporary directory for the shallow clone
@@ -1137,6 +1197,18 @@ func listDirAllFilesForHost(owner, repo, ref, dirPath, host string) ([]string, e
 }
 
 func listDirAllFilesViaGitForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
 	remoteLog.Printf("Git fallback for listing all dir files: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
 	tmpDir, err := getOrCreateListRepoClone(owner, repo, ref, host)
@@ -1274,6 +1346,18 @@ func listContentsRecursivelyWithDepth(client *api.RESTClient, owner, repo, ref, 
 }
 
 func listDirAllFilesRecursivelyViaGitForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
 	remoteLog.Printf("Git fallback for listing all dir files recursively: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
 	tmpDir, err := getOrCreateListRepoClone(owner, repo, ref, host)
@@ -1396,6 +1480,18 @@ func listDirSubdirsForHost(owner, repo, ref, dirPath, host string) ([]string, er
 }
 
 func listDirSubdirsViaGitForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
 	remoteLog.Printf("Git fallback for listing subdirs: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
 	tmpDir, err := getOrCreateListRepoClone(owner, repo, ref, host)
@@ -1458,6 +1554,18 @@ func listDirSubdirsViaPublicAPI(owner, repo, ref, dirPath string) ([]string, err
 }
 
 func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(owner); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(repo); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(workflowPath); err != nil {
+		return nil, err
+	}
 	remoteLog.Printf("Attempting git fallback for listing workflow files: %s/%s@%s (path: %s)", owner, repo, ref, workflowPath)
 
 	githubHost := GetGitHubHostForRepo(owner, repo)

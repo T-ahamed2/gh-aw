@@ -13,6 +13,7 @@ import (
 	"github.com/github/gh-aw/pkg/console"
 	"github.com/github/gh-aw/pkg/constants"
 	"github.com/github/gh-aw/pkg/fileutil"
+	"github.com/github/gh-aw/pkg/gitutil"
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/github/gh-aw/pkg/workflow"
 )
@@ -30,6 +31,14 @@ var checkoutActionPattern = regexp.MustCompile(`^(\s*)(uses: actions/checkout@[^
 // If forceDeleteHostRepo is true, deletes the repository if it exists before creating it
 // If dryRun is true, only shows what would be done without making changes
 func ensureTrialRepository(repoSlug string, cloneRepoSlug string, forceDeleteHostRepo bool, dryRun bool, verbose bool) error {
+	if err := gitutil.ValidateGitArg(repoSlug); err != nil {
+		return err
+	}
+	if cloneRepoSlug != "" {
+		if err := gitutil.ValidateGitArg(cloneRepoSlug); err != nil {
+			return err
+		}
+	}
 	trialRepoLog.Printf("Ensuring trial repository: %s (cloneRepo=%s, forceDelete=%v, dryRun=%v)", repoSlug, cloneRepoSlug, forceDeleteHostRepo, dryRun)
 
 	parts := strings.Split(repoSlug, "/")
@@ -159,6 +168,9 @@ func ensureTrialRepository(repoSlug string, cloneRepoSlug string, forceDeleteHos
 }
 
 func cleanupTrialRepository(repoSlug string, verbose bool) error {
+	if err := gitutil.ValidateGitArg(repoSlug); err != nil {
+		return err
+	}
 	trialRepoLog.Printf("Cleaning up trial repository: %s", repoSlug)
 	if verbose {
 		fmt.Fprintln(os.Stderr, console.FormatInfoMessage("Cleaning up host repository: "+repoSlug))
@@ -181,6 +193,9 @@ func cleanupTrialRepository(repoSlug string, verbose bool) error {
 }
 
 func cloneTrialHostRepository(repoSlug string, verbose bool) (string, error) {
+	if err := gitutil.ValidateGitArg(repoSlug); err != nil {
+		return "", err
+	}
 	trialRepoLog.Printf("Cloning trial host repository: %s", repoSlug)
 	// Create temporary directory
 	tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("gh-aw-trial-%x", time.Now().UnixNano()))
@@ -533,6 +548,17 @@ func commitAndPushWorkflow(tempDir, workflowName string, verbose bool) error {
 // cloneRepoContentsIntoHost clones the contents of the source repo into the host repo
 // Uses a simplified approach with force push since host repo is freshly created
 func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, hostRepoSlug string, verbose bool) error {
+	if err := gitutil.ValidateGitArg(cloneRepoSlug); err != nil {
+		return err
+	}
+	if cloneRepoVersion != "" {
+		if err := gitutil.ValidateGitArg(cloneRepoVersion); err != nil {
+			return err
+		}
+	}
+	if err := gitutil.ValidateGitArg(hostRepoSlug); err != nil {
+		return err
+	}
 	if verbose {
 		fmt.Fprintln(os.Stderr, console.FormatInfoMessage(fmt.Sprintf("Cloning contents from %s into host repository %s", cloneRepoSlug, hostRepoSlug)))
 	}

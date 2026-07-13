@@ -245,6 +245,52 @@ func TestIsValidFullSHA(t *testing.T) {
 	}
 }
 
+func TestValidateGitArg(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		expectError bool
+	}{
+		{
+			name:        "valid argument",
+			input:       "main",
+			expectError: false,
+		},
+		{
+			name:        "valid repository slug",
+			input:       "owner/repo",
+			expectError: false,
+		},
+		{
+			name:        "invalid argument with single hyphen",
+			input:       "-v",
+			expectError: true,
+		},
+		{
+			name:        "invalid argument with double hyphen",
+			input:       "--version",
+			expectError: true,
+		},
+		{
+			name:        "empty argument",
+			input:       "",
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGitArg(tt.input)
+			if tt.expectError {
+				assert.Error(t, err, "ValidateGitArg(%q) should return an error", tt.input)
+				assert.Contains(t, err.Error(), "must not start with '-'")
+			} else {
+				assert.NoError(t, err, "ValidateGitArg(%q) should not return an error", tt.input)
+			}
+		})
+	}
+}
+
 func TestExtractBaseRepo(t *testing.T) {
 	tests := []struct {
 		name     string
