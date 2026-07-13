@@ -151,3 +151,39 @@ func TestLevenshteinDistance(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkFindClosestMatches(b *testing.B) {
+	target := "copiliot"
+	candidates := []string{"copilot", "claude", "codex", "custom", "gpt-4", "gpt-3.5", "llama", "mistral"}
+	b.ResetTimer()
+	for b.Loop() {
+		FindClosestMatches(target, candidates, 3)
+	}
+}
+
+func BenchmarkLevenshteinDistance_Short(b *testing.B) {
+	s1 := "copilot"
+	s2 := "copiliot"
+	b.ResetTimer()
+	for b.Loop() {
+		LevenshteinDistance(s1, s2)
+	}
+}
+
+func BenchmarkFindClosestMatches_ShortCircuit(b *testing.B) {
+	target := "a"
+	candidates := []string{
+		"unnecessarily_long_candidate_name_1",
+		"unnecessarily_long_candidate_name_2",
+		"unnecessarily_long_candidate_name_3",
+		"unnecessarily_long_candidate_name_4",
+		"unnecessarily_long_candidate_name_5",
+		"unnecessarily_long_candidate_name_6",
+		"unnecessarily_long_candidate_name_7",
+		"unnecessarily_long_candidate_name_8",
+	}
+	b.ResetTimer()
+	for b.Loop() {
+		FindClosestMatches(target, candidates, 3)
+	}
+}
