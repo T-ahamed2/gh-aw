@@ -455,8 +455,8 @@ func TestValidateGitArg(t *testing.T) {
 			if tt.expected {
 				assert.NoError(t, err, "ValidateGitArg(%q) should not return an error", tt.input)
 			} else {
-				assert.Error(t, err, "ValidateGitArg(%q) should return an error", tt.input)
-				assert.Contains(t, err.Error(), "starts with a hyphen", "error message should mention hyphen")
+				require.Error(t, err, "ValidateGitArg(%q) should return an error", tt.input)
+				assert.Contains(t, err.Error(), "hyphen-prefixed", "error message should mention hyphen")
 			}
 		})
 	}

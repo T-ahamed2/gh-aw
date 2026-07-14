@@ -88,7 +88,7 @@ func FindGitRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		gitutilLog.Printf("Failed to get current directory: %v", err)
-		return "", fmt.Errorf("failed to get current directory: %w", err)
+		return "", fmt.Errorf("could not retrieve current working directory; check filesystem permissions and ensure the directory exists: %w", err)
 	}
 
 	root, err := FindGitRootFrom(dir)
@@ -108,7 +108,7 @@ func FindGitRoot() (string, error) {
 func FindGitRootFrom(startDir string) (string, error) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve absolute path for %q: %w", startDir, err)
+		return "", fmt.Errorf("could not resolve absolute path for %q; check if the path is valid and accessible: %w", startDir, err)
 	}
 	dir = filepath.Clean(dir)
 	for {
@@ -124,7 +124,7 @@ func FindGitRootFrom(startDir string) (string, error) {
 			if info.Mode().IsRegular() {
 				data, readErr := os.ReadFile(gitPath)
 				if readErr != nil {
-					return "", fmt.Errorf("failed to read .git file at %q: %w", gitPath, readErr)
+					return "", fmt.Errorf("could not read .git file at %q; check filesystem permissions: %w", gitPath, readErr)
 				}
 				if strings.HasPrefix(strings.TrimSpace(string(data)), "gitdir:") {
 					return dir, nil
@@ -132,7 +132,7 @@ func FindGitRootFrom(startDir string) (string, error) {
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
 			// Unexpected error (e.g. permission denied) — surface it.
-			return "", fmt.Errorf("failed to stat %q: %w", gitPath, err)
+			return "", fmt.Errorf("could not access %q; check filesystem permissions and ensure the path exists: %w", gitPath, err)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -188,7 +188,7 @@ func ReadFileFromHEAD(filePath, gitRoot string) (string, error) {
 // command (like git or gh) without a -- separator.
 func ValidateGitArg(arg string) error {
 	if strings.HasPrefix(arg, "-") {
-		return fmt.Errorf("argument %q starts with a hyphen and may be interpreted as a flag", arg)
+		return fmt.Errorf("hyphen-prefixed argument %q is not allowed as it may be interpreted as a CLI flag; use a valid Git reference or path; Example: main", arg)
 	}
 	return nil
 }
