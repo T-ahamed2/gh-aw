@@ -193,8 +193,8 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 		if !ok {
 			repositoryFeaturesCache.Delete(repo)
 			return nil, NewValidationError("repositoryFeaturesCache", fmt.Sprintf("%T", cached),
-				fmt.Sprintf("invalid repository feature cache entry for %s", repo),
-				"Clear the repository features cache and retry the operation; expected *RepositoryFeatures type.")
+				"invalid repository feature cache entry for "+repo,
+				"Clear the repository features cache and retry the operation; expected *RepositoryFeatures type; should be a valid pointer. Example: repositoryFeaturesCache.Delete(\"owner/repo\")")
 		}
 		repositoryFeaturesLog.Printf("Using cached repository features for: %s", repo)
 		return features, nil
@@ -228,8 +228,8 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	if !ok {
 		repositoryFeaturesCache.Delete(repo)
 		return nil, NewValidationError("repositoryFeaturesCache", fmt.Sprintf("%T", actual),
-			fmt.Sprintf("invalid repository feature cache entry for %s", repo),
-			"Clear the repository features cache and retry the operation; expected *RepositoryFeatures type.")
+			"invalid repository feature cache entry for "+repo,
+			"Clear the repository features cache and retry the operation; expected *RepositoryFeatures type; should be a valid pointer. Example: repositoryFeaturesCache.Delete(\"owner/repo\")")
 	}
 
 	repositoryFeaturesLog.Printf("Cached repository features for: %s (discussions: %v, issues: %v)", repo, actualFeatures.HasDiscussions, actualFeatures.HasIssues)
