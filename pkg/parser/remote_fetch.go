@@ -73,7 +73,11 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 		return "", fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
-	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
+
+	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", "--", repoURL, tmpDir)
 	cloneOutput, err := cloneCmd.CombinedOutput()
 	if err != nil {
 		if cleanupErr := os.RemoveAll(tmpDir); cleanupErr != nil {
@@ -456,6 +460,10 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 	}
 	repoURL := fmt.Sprintf("%s/%s/%s.git", githubHost, owner, repo)
 
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
+
 	// Try to resolve the ref using git ls-remote
 	// Format: git ls-remote <repo> <ref>
 	cmd := exec.Command("git", "ls-remote", repoURL, ref)
@@ -465,7 +473,7 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 		for _, prefix := range []string{"refs/heads/", "refs/tags/"} {
 			cmd = exec.Command("git", "ls-remote", repoURL, prefix+ref)
 			output, err = cmd.Output()
-			if err == nil && len(output) > 0 {
+			if err == nil && string(output) != "" {
 				break
 			}
 		}
@@ -622,10 +630,17 @@ func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string
 	}
 	repoURL := fmt.Sprintf("%s/%s/%s.git", githubHost, owner, repo)
 
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(path); err != nil {
+		return nil, err
+	}
+
 	// git archive command: git archive --remote=<repo> <ref> <path>
 	// #nosec G204 -- repoURL, ref, and path are from workflow import configuration authored by the
 	// developer; exec.Command with separate args (not shell execution) prevents shell injection.
-	cmd := exec.Command("git", "archive", "--remote="+repoURL, ref, path)
+	cmd := exec.CommandContext(ctx, "git", "archive", "--remote="+repoURL, ref, "--", path)
 	archiveOutput, err := cmd.Output()
 	if err != nil {
 		// If git archive fails, try with git clone + git show as a fallback
@@ -699,28 +714,32 @@ func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error
 	// Check if ref is a SHA (40 hex characters)
 	isSHA := len(ref) == 40 && gitutil.IsHexString(ref)
 
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+
 	var cloneCmd *exec.Cmd
 	if isSHA {
 		// For SHA refs, we need to clone without --branch and then checkout the specific commit
 		// Clone with minimal depth and no branch specified
-		cloneCmd = exec.Command("git", "clone", "--depth", "1", "--no-single-branch", repoURL, tmpDir)
+		cloneCmd = exec.Command("git", "clone", "--depth", "1", "--no-single-branch", "--", repoURL, tmpDir)
 		if output, err := cloneCmd.CombinedOutput(); err != nil {
 			// Try without --no-single-branch if the first attempt fails
 			remoteLog.Printf("Clone with --no-single-branch failed, trying full clone: %s", string(output))
-			cloneCmd = exec.Command("git", "clone", repoURL, tmpDir)
+			cloneCmd = exec.Command("git", "clone", "--", repoURL, tmpDir)
 			if output, err := cloneCmd.CombinedOutput(); err != nil {
 				return nil, fmt.Errorf("failed to clone repository: %w\nOutput: %s", err, string(output))
 			}
 		}
 
 		// Now checkout the specific commit
-		checkoutCmd := exec.Command("git", "-C", tmpDir, "checkout", ref)
+		checkoutCmd := exec.Command("git", "-C", tmpDir, "checkout", ref, "--")
 		if output, err := checkoutCmd.CombinedOutput(); err != nil {
 			return nil, fmt.Errorf("failed to checkout commit %s: %w\nOutput: %s", ref, err, string(output))
 		}
 	} else {
 		// For branch/tag refs, use --branch flag
-		cloneCmd = exec.Command("git", "clone", "--depth", "1", "--branch", ref, repoURL, tmpDir)
+		cloneCmd = exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--", repoURL, tmpDir)
 		if output, err := cloneCmd.CombinedOutput(); err != nil {
 			return nil, fmt.Errorf("failed to clone repository: %w\nOutput: %s", err, string(output))
 		}
@@ -758,7 +777,7 @@ func checkRemoteSymlink(client *api.RESTClient, owner, repo, dirPath, ref string
 
 	// If the response is an array, this is a directory listing — not a symlink
 	trimmed := strings.TrimSpace(string(raw))
-	if len(trimmed) > 0 && trimmed[0] == '[' {
+	if trimmed != "" && trimmed[0] == '[' {
 		remoteLog.Printf("Path component %s is a directory (not a symlink)", dirPath)
 		return "", false, nil
 	}
@@ -1144,7 +1163,11 @@ func listDirAllFilesViaGitForHost(owner, repo, ref, dirPath, host string) ([]str
 		return nil, err
 	}
 
-	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", dirPath+"/")
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
+	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", "--", dirPath+"/")
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list dir files: %s", string(lsTreeOutput))
@@ -1283,7 +1306,11 @@ func listDirAllFilesRecursivelyViaGitForHost(owner, repo, ref, dirPath, host str
 
 	// Normalise dirPath so it never has a trailing slash before we append one.
 	cleanDirPath := strings.TrimRight(dirPath, "/")
-	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", cleanDirPath+"/")
+	if err := gitutil.ValidateGitArg(cleanDirPath); err != nil {
+		return nil, err
+	}
+
+	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", "--", cleanDirPath+"/")
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list dir files recursively: %s", string(lsTreeOutput))
@@ -1403,8 +1430,12 @@ func listDirSubdirsViaGitForHost(owner, repo, ref, dirPath, host string) ([]stri
 		return nil, err
 	}
 
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
 	// Use ls-tree -d to list only direct subdirectory entries.
-	lsTreeDirsCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "--name-only", "-d", "HEAD", dirPath+"/")
+	lsTreeDirsCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "--name-only", "-d", "HEAD", "--", dirPath+"/")
 	lsTreeDirsOutput, err := lsTreeDirsCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list tree subdirs: %s", string(lsTreeDirsOutput))
@@ -1473,9 +1504,16 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 	}
 	defer os.RemoveAll(tmpDir)
 
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(workflowPath); err != nil {
+		return nil, err
+	}
+
 	// Do a minimal clone using filter=blob:none for faster cloning (metadata only, no blobs)
 	// Use --depth=1 for shallow clone and --no-checkout to skip checkout initially
-	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
+	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", "--", repoURL, tmpDir)
 	cloneOutput, err := cloneCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
@@ -1483,7 +1521,7 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 	}
 
 	// Use git ls-tree to list files in the specified workflows directory
-	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", workflowPath+"/")
+	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", "--", workflowPath+"/")
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list files: %s", string(lsTreeOutput))
