@@ -128,7 +128,9 @@ func parseActionUsesField(uses string) (*actionRef, error) {
 	// External action: split on "@" to get ref
 	atIdx := strings.LastIndex(uses, "@")
 	if atIdx < 0 {
-		return nil, fmt.Errorf("invalid action ref %q: missing @ref suffix", uses)
+		return nil, NewValidationError("uses", uses,
+			"missing @ref suffix in action reference",
+			"Ensure the action reference includes a version tag or branch name. Example: actions/checkout@v4")
 	}
 
 	refStr := uses[atIdx+1:]
@@ -137,7 +139,9 @@ func parseActionUsesField(uses string) (*actionRef, error) {
 	// Split repo from subdir: first two path segments are owner/repo
 	parts := strings.SplitN(repoAndPath, "/", 3)
 	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid action ref %q: expected owner/repo format", uses)
+		return nil, NewValidationError("uses", uses,
+			"expected owner/repo format for action reference",
+			"Ensure the action reference follows the owner/repo format before the @ref. Example: actions/checkout@v4")
 	}
 
 	repo := parts[0] + "/" + parts[1]
@@ -287,11 +291,12 @@ func fetchRemoteActionYAML(repo, subdir, ref string) (*actionYAMLFile, error) {
 		apiPath := fmt.Sprintf("/repos/%s/contents/%s?ref=%s", repo, contentPath, ref)
 		safeOutputActionsLog.Printf("Fetching action YAML from: %s", apiPath)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		cmd := ExecGHContext(ctx, "api", apiPath, "--jq", ".content")
-		output, err := cmd.Output()
-		cancel()
+		output, err := func() ([]byte, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			cmd := ExecGHContext(ctx, "api", apiPath, "--jq", ".content")
+			return cmd.Output()
+		}()
 		if err != nil {
 			safeOutputActionsLog.Printf("Failed to fetch %s from %s@%s: %v", filename, repo, ref, err)
 			continue
@@ -348,7 +353,8 @@ func readLocalActionYAML(localPath, markdownPath string) (*actionYAMLFile, error
 func parseActionYAMLContent(content []byte) (*actionYAMLFile, error) {
 	var parsed actionYAMLFile
 	if err := yaml.Unmarshal(content, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse action YAML: %w", err)
+		return nil, NewOperationError("parse action YAML", "content", string(content), err,
+			"Verify the action.yml file has valid YAML syntax; requires a well-formatted YAML file. Example: check for indentation or special character issues.")
 	}
 	return &parsed, nil
 }
