@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -18,24 +19,24 @@ var resolverLog = logger.New("workflow:action_resolver")
 // ActionResolver handles resolving action SHAs using GitHub CLI
 type ActionResolver struct {
 	cache             *ActionCache
-	failedResolutions map[string]bool // tracks failed resolution attempts in current run (key: "repo@version")
-	usedCacheKeys     map[string]bool // tracks cache keys that were hit or newly set during this run
+	failedResolutions map[string]struct{} // tracks failed resolution attempts in current run (key: "repo@version")
+	usedCacheKeys     map[string]struct{} // tracks cache keys that were hit or newly set during this run
 }
 
 // NewActionResolver creates a new action resolver
 func NewActionResolver(cache *ActionCache) *ActionResolver {
 	return &ActionResolver{
 		cache:             cache,
-		failedResolutions: make(map[string]bool),
-		usedCacheKeys:     make(map[string]bool),
+		failedResolutions: make(map[string]struct{}),
+		usedCacheKeys:     make(map[string]struct{}),
 	}
 }
 
 // GetUsedCacheKeys returns the set of cache keys (in "repo@version" format) that
 // were successfully resolved from the cache or written to the cache during this run.
 // These represent the action pins actually referenced by the compiled workflows.
-func (r *ActionResolver) GetUsedCacheKeys() map[string]bool {
-	keys := make(map[string]bool, len(r.usedCacheKeys))
+func (r *ActionResolver) GetUsedCacheKeys() map[string]struct{} {
+	keys := make(map[string]struct{}, len(r.usedCacheKeys))
 	maps.Copy(keys, r.usedCacheKeys)
 	return keys
 }
@@ -43,7 +44,7 @@ func (r *ActionResolver) GetUsedCacheKeys() map[string]bool {
 // MarkCacheKeyAsUsed explicitly marks a cache key as used during this compilation run.
 // This is useful for compiler-generated actions that aren't resolved through ResolveSHA.
 func (r *ActionResolver) MarkCacheKeyAsUsed(cacheKey string) {
-	r.usedCacheKeys[cacheKey] = true
+	r.usedCacheKeys[cacheKey] = struct{}{}
 	resolverLog.Printf("Marked cache key as used: %s", cacheKey)
 }
 
@@ -76,8 +77,8 @@ func (r *ActionResolver) MarkCompilerGeneratedActionsAsUsed() {
 	marked := 0
 	for _, repo := range compilerGeneratedRepos {
 		if cacheKey, _, found := r.cache.FindAnyEntryForRepo(repo); found {
-			if !r.usedCacheKeys[cacheKey] {
-				r.usedCacheKeys[cacheKey] = true
+			if _, used := r.usedCacheKeys[cacheKey]; !used {
+				r.usedCacheKeys[cacheKey] = struct{}{}
 				marked++
 				resolverLog.Printf("Marked compiler-generated action as used: %s", cacheKey)
 			}
@@ -96,12 +97,14 @@ func (r *ActionResolver) ResolveSHA(ctx context.Context, repo, version string) (
 	// Create a cache key for tracking failed resolutions and cache lookups.
 	// Computed once here and reused below to avoid duplicate allocation.
 	cacheKey := formatActionCacheKey(repo, version)
-	r.usedCacheKeys[cacheKey] = true
+	r.usedCacheKeys[cacheKey] = struct{}{}
 
 	// Check if we've already failed to resolve this action in this run
-	if r.failedResolutions[cacheKey] {
+	if _, failed := r.failedResolutions[cacheKey]; failed {
 		resolverLog.Printf("Skipping resolution for %s@%s: already failed in this run", repo, version)
-		return "", fmt.Errorf("previously failed to resolve %s@%s in this compilation run", repo, version)
+		return "", NewOperationError("resolve", "action", fmt.Sprintf("%s@%s", repo, version),
+			errors.New("previously failed to resolve in this compilation run; should retry after checking network connectivity; Example: gh aw compile"),
+			"The GitHub API call for this action failed earlier. You should check your network connection or the existence of the action/tag and retry; Example: gh aw compile")
 	}
 
 	// Check cache first using the pre-computed key to avoid a second key allocation.
@@ -146,7 +149,7 @@ func (r *ActionResolver) ResolveSHA(ctx context.Context, repo, version string) (
 	if err != nil {
 		resolverLog.Printf("Failed to resolve %s@%s: %v", repo, version, err)
 		// Mark this resolution as failed for this compilation run
-		r.failedResolutions[cacheKey] = true
+		r.failedResolutions[cacheKey] = struct{}{}
 		resolverLog.Printf("Marked %s as failed, will not retry in this run", cacheKey)
 		return "", err
 	}
@@ -169,12 +172,16 @@ func ParseTagRefTSV(line string) (sha, objType string, err error) {
 	line = strings.TrimSpace(line)
 	parts := strings.SplitN(line, "\t", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("unexpected format: %q", line)
+		return "", "", NewValidationError("tag reference", line,
+			"tag reference must be in tab-separated 'SHA\ttype' format",
+			"Check the GitHub API response format; Example: 8e5e7e5...\tcommit")
 	}
 	sha = parts[0]
 	objType = parts[1]
 	if len(sha) != 40 || !gitutil.IsHexString(sha) {
-		return "", "", fmt.Errorf("invalid SHA format: expected 40 hex characters, got %d (%s)", len(sha), sha)
+		return "", "", NewValidationError("SHA", sha,
+			fmt.Sprintf("SHA must be exactly 40 hex characters but got %d", len(sha)),
+			"Check the GitHub API response; Example: 8e5e7e58f007f354964645229b19199320e8b23c")
 	}
 	return sha, objType, nil
 }
@@ -204,12 +211,14 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 	ForceGHHostEnv(cmd, "github.com")
 	output, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve %s@%s: %w", repo, version, err)
+		return "", NewOperationError("resolve", "action", fmt.Sprintf("%s@%s", repo, version), err,
+			"Verify the action repository and version exist, and that you have network access; Example: git ls-remote https://github.com/owner/repo")
 	}
 
 	sha, objType, err := ParseTagRefTSV(string(output))
 	if err != nil {
-		return "", fmt.Errorf("failed to parse API response for %s@%s: %w", repo, version, err)
+		return "", NewOperationError("parse", "GitHub API response", fmt.Sprintf("%s@%s", repo, version), err,
+			"The GitHub API returned an unexpected response format. Check your GitHub CLI version or API connectivity; Example: gh auth status")
 	}
 
 	// Annotated tags (and chained tag objects) point to a tag object rather than
@@ -219,24 +228,31 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 	const maxTagPeelDepth = 10
 	for depth := 0; objType == "tag"; depth++ {
 		if depth >= maxTagPeelDepth {
-			return "", fmt.Errorf("failed to resolve %s@%s: exceeded max tag peel depth %d", repo, version, maxTagPeelDepth)
+			return "", NewOperationError("resolve", "action", fmt.Sprintf("%s@%s", repo, version),
+				fmt.Errorf("exceeded max tag peel depth %d", maxTagPeelDepth),
+				"The action uses too many nested annotated tags. Try pinning to a specific commit SHA; Example: actions/checkout@8e5e7e5...")
 		}
 		resolverLog.Printf("Detected annotated tag for %s@%s (depth %d, tag object SHA: %s), peeling to underlying object", repo, version, depth, sha)
-		tagPath := fmt.Sprintf("/repos/%s/git/tags/%s", baseRepo, sha)
-		// Each peel gets its own fresh 30-second timeout derived from the original
-		// caller context (ctx), not from callCtx, so we don't accidentally shrink
-		// the budget for subsequent peels.
-		peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
-		cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
-		ForceGHHostEnv(cmd2, "github.com")
-		output2, peelErr := cmd2.Output()
-		peelCancel()
-		if peelErr != nil {
-			return "", fmt.Errorf("failed to peel annotated tag %s@%s: %w", repo, version, peelErr)
+
+		// Define a function to avoid defer in loop
+		peelTag := func(tagSha string) (string, string, error) {
+			tagPath := fmt.Sprintf("/repos/%s/git/tags/%s", baseRepo, tagSha)
+			peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
+			defer peelCancel()
+
+			cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
+			ForceGHHostEnv(cmd2, "github.com")
+			output2, peelErr := cmd2.Output()
+			if peelErr != nil {
+				return "", "", NewOperationError("peel", "annotated tag", fmt.Sprintf("%s@%s", repo, version), peelErr,
+					"Verify the tag object exists and that you have network access; Example: gh api "+tagPath)
+			}
+			return ParseTagRefTSV(string(output2))
 		}
-		sha, objType, err = ParseTagRefTSV(string(output2))
+
+		sha, objType, err = peelTag(sha)
 		if err != nil {
-			return "", fmt.Errorf("failed to parse peeled tag API response for %s@%s: %w", repo, version, err)
+			return "", err
 		}
 	}
 	resolverLog.Printf("Resolved %s@%s to %s SHA: %s", repo, version, objType, sha)
@@ -262,14 +278,14 @@ func ResolveGhAwRef(ctx context.Context, ref string) (string, error) {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(output))
-		if msg != "" {
-			return "", fmt.Errorf("failed to resolve gh-aw ref %q to SHA: %s: %w", ref, msg, err)
-		}
-		return "", fmt.Errorf("failed to resolve gh-aw ref %q to SHA: %w", ref, err)
+		return "", NewOperationError("resolve", "gh-aw ref", ref, err,
+			fmt.Sprintf("Verify the ref exists in github/gh-aw; details: %s; Example: main", msg))
 	}
 	sha := strings.TrimSpace(string(output))
 	if !gitutil.IsValidFullSHA(sha) {
-		return "", fmt.Errorf("unexpected response resolving gh-aw ref %q: got %q (expected 40-char hex SHA)", ref, sha)
+		return "", NewOperationError("resolve", "gh-aw ref", ref,
+			fmt.Errorf("unexpected response: got %q but expected 40-char hex SHA", sha),
+			"Check your GitHub CLI version or API connectivity; Example: gh auth status")
 	}
 	resolverLog.Printf("Resolved --gh-aw-ref %q to commit SHA %s", ref, sha)
 	return sha, nil

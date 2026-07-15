@@ -612,58 +612,61 @@ func sumAICFromUsageJSONLFiles(filePaths []string) (float64, bool, error) {
 	found := false
 
 	for _, filePath := range filePaths {
-		file, err := os.Open(filepath.Clean(filePath))
+		err := func() error {
+			file, err := os.Open(filepath.Clean(filePath))
+			if err != nil {
+				return fmt.Errorf("failed to open usage JSONL file %s: %w", filePath, err)
+			}
+			defer file.Close()
+
+			scanner := bufio.NewScanner(file)
+			scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if line == "" || !strings.HasPrefix(line, "{") {
+					continue
+				}
+
+				var parsed map[string]any
+				if err := json.Unmarshal([]byte(line), &parsed); err != nil {
+					continue
+				}
+
+				usage := extractUsageRecord(parsed["usage"])
+				explicitAICredits := usageNumericValue(parsed, usage, "ai_credits", "aiCredits")
+				if explicitAICredits > 0 {
+					totalAIC += explicitAICredits
+					found = true
+					continue
+				}
+				explicitAIC := usageNumericValue(parsed, usage, "aic")
+				if explicitAIC > 0 {
+					totalAIC += explicitAIC
+					found = true
+					continue
+				}
+
+				computedAIC := computeModelInferenceAIC(
+					usageStringValue(parsed, usage, "provider"),
+					usageStringValue(parsed, usage, "model"),
+					int(usageNumericValue(parsed, usage, "input_tokens", "inputTokens")),
+					int(usageNumericValue(parsed, usage, "output_tokens", "outputTokens")),
+					int(usageNumericValue(parsed, usage, "cache_read_tokens", "cacheReadTokens")),
+					int(usageNumericValue(parsed, usage, "cache_write_tokens", "cacheWriteTokens")),
+					int(usageNumericValue(parsed, usage, "reasoning_tokens", "reasoningTokens")),
+				)
+				if computedAIC > 0 {
+					totalAIC += computedAIC
+					found = true
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				return fmt.Errorf("error reading usage JSONL file %s: %w", filePath, err)
+			}
+			return nil
+		}()
 		if err != nil {
-			return 0, false, fmt.Errorf("failed to open usage JSONL file %s: %w", filePath, err)
-		}
-
-		scanner := bufio.NewScanner(file)
-		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" || !strings.HasPrefix(line, "{") {
-				continue
-			}
-
-			var parsed map[string]any
-			if err := json.Unmarshal([]byte(line), &parsed); err != nil {
-				continue
-			}
-
-			usage := extractUsageRecord(parsed["usage"])
-			explicitAICredits := usageNumericValue(parsed, usage, "ai_credits", "aiCredits")
-			if explicitAICredits > 0 {
-				totalAIC += explicitAICredits
-				found = true
-				continue
-			}
-			explicitAIC := usageNumericValue(parsed, usage, "aic")
-			if explicitAIC > 0 {
-				totalAIC += explicitAIC
-				found = true
-				continue
-			}
-
-			computedAIC := computeModelInferenceAIC(
-				usageStringValue(parsed, usage, "provider"),
-				usageStringValue(parsed, usage, "model"),
-				int(usageNumericValue(parsed, usage, "input_tokens", "inputTokens")),
-				int(usageNumericValue(parsed, usage, "output_tokens", "outputTokens")),
-				int(usageNumericValue(parsed, usage, "cache_read_tokens", "cacheReadTokens")),
-				int(usageNumericValue(parsed, usage, "cache_write_tokens", "cacheWriteTokens")),
-				int(usageNumericValue(parsed, usage, "reasoning_tokens", "reasoningTokens")),
-			)
-			if computedAIC > 0 {
-				totalAIC += computedAIC
-				found = true
-			}
-		}
-		closeErr := file.Close()
-		if err := scanner.Err(); err != nil {
-			return 0, false, fmt.Errorf("error reading usage JSONL file %s: %w", filePath, err)
-		}
-		if closeErr != nil {
-			return 0, false, fmt.Errorf("failed to close usage JSONL file %s: %w", filePath, closeErr)
+			return 0, false, err
 		}
 	}
 

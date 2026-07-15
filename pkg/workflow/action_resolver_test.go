@@ -89,10 +89,10 @@ func TestActionResolverFailedResolutionCache(t *testing.T) {
 
 	// Verify the failed resolution was tracked
 	cacheKey := formatActionCacheKey(repo, version)
-	if !resolver.failedResolutions[cacheKey] {
+	if _, failed := resolver.failedResolutions[cacheKey]; !failed {
 		t.Errorf("Expected failed resolution to be tracked for %s", cacheKey)
 	}
-	if !resolver.GetUsedCacheKeys()[cacheKey] {
+	if _, used := resolver.GetUsedCacheKeys()[cacheKey]; !used {
 		t.Errorf("Expected used cache keys to track attempted resolution for %s", cacheKey)
 	}
 
@@ -107,7 +107,7 @@ func TestActionResolverFailedResolutionCache(t *testing.T) {
 	if !strings.Contains(err2.Error(), expectedErrMsg) {
 		t.Errorf("Expected error message to contain %q, got: %v", expectedErrMsg, err2)
 	}
-	if !resolver.GetUsedCacheKeys()[cacheKey] {
+	if _, used := resolver.GetUsedCacheKeys()[cacheKey]; !used {
 		t.Errorf("Expected used cache keys to retain attempted resolution key %s", cacheKey)
 	}
 }
@@ -156,31 +156,31 @@ func TestParseTagRefTSV(t *testing.T) {
 			name:        "empty input is rejected",
 			input:       "",
 			wantErr:     true,
-			errContains: "unexpected format",
+			errContains: "must be in tab-separated",
 		},
 		{
 			name:        "missing tab separator is rejected",
 			input:       commitSHA,
 			wantErr:     true,
-			errContains: "unexpected format",
+			errContains: "must be in tab-separated",
 		},
 		{
 			name:        "empty type field is rejected",
 			input:       commitSHA + "\t",
 			wantErr:     true,
-			errContains: "unexpected format",
+			errContains: "must be in tab-separated",
 		},
 		{
 			name:        "short SHA is rejected",
 			input:       "abc123\tcommit",
 			wantErr:     true,
-			errContains: "invalid SHA format",
+			errContains: "must be exactly 40 hex characters",
 		},
 		{
 			name:        "non-hex SHA is rejected",
 			input:       "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\tcommit",
 			wantErr:     true,
-			errContains: "invalid SHA format",
+			errContains: "must be exactly 40 hex characters",
 		},
 	}
 
@@ -233,10 +233,10 @@ func TestActionResolverUsedCacheKeysOnCacheHit(t *testing.T) {
 	}
 
 	usedKeys := resolver.GetUsedCacheKeys()
-	if !usedKeys["owner/action-a@v1"] {
+	if _, used := usedKeys["owner/action-a@v1"]; !used {
 		t.Error("Expected owner/action-a@v1 to be in used cache keys after a cache hit")
 	}
-	if usedKeys["owner/action-b@v2"] {
+	if _, used := usedKeys["owner/action-b@v2"]; used {
 		t.Error("Expected owner/action-b@v2 to be absent from used cache keys (never resolved)")
 	}
 }
@@ -254,7 +254,7 @@ func TestActionResolverGetUsedCacheKeysReturnsCopy(t *testing.T) {
 	usedKeys := resolver.GetUsedCacheKeys()
 	delete(usedKeys, "owner/action-a@v1")
 
-	if !resolver.GetUsedCacheKeys()["owner/action-a@v1"] {
+	if _, used := resolver.GetUsedCacheKeys()["owner/action-a@v1"]; !used {
 		t.Error("Expected resolver used cache keys to be immutable via returned map")
 	}
 }

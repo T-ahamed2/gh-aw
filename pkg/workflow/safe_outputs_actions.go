@@ -128,7 +128,9 @@ func parseActionUsesField(uses string) (*actionRef, error) {
 	// External action: split on "@" to get ref
 	atIdx := strings.LastIndex(uses, "@")
 	if atIdx < 0 {
-		return nil, fmt.Errorf("invalid action ref %q: missing @ref suffix", uses)
+		return nil, NewValidationError("uses", uses,
+			"invalid action reference; missing @ref suffix",
+			"Specify a version tag or commit SHA after an @ symbol; Example: uses: actions/checkout@v4")
 	}
 
 	refStr := uses[atIdx+1:]
@@ -137,7 +139,9 @@ func parseActionUsesField(uses string) (*actionRef, error) {
 	// Split repo from subdir: first two path segments are owner/repo
 	parts := strings.SplitN(repoAndPath, "/", 3)
 	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid action ref %q: expected owner/repo format", uses)
+		return nil, NewValidationError("uses", uses,
+			"invalid action reference; expected owner/repo format",
+			"Ensure the action reference includes both owner and repository; Example: uses: actions/checkout@v4")
 	}
 
 	repo := parts[0] + "/" + parts[1]
@@ -287,15 +291,24 @@ func fetchRemoteActionYAML(repo, subdir, ref string) (*actionYAMLFile, error) {
 		apiPath := fmt.Sprintf("/repos/%s/contents/%s?ref=%s", repo, contentPath, ref)
 		safeOutputActionsLog.Printf("Fetching action YAML from: %s", apiPath)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		cmd := ExecGHContext(ctx, "api", apiPath, "--jq", ".content")
-		output, err := cmd.Output()
-		cancel()
+		content, err := func() ([]byte, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			cmd := ExecGHContext(ctx, "api", apiPath, "--jq", ".content")
+			output, err := cmd.Output()
+			if err != nil {
+				return nil, NewOperationError("fetch", "action.yml content", apiPath, err,
+					"Check your network connection and GitHub CLI authentication; Example: gh auth status")
+			}
+			return output, nil
+		}()
+
 		if err != nil {
 			safeOutputActionsLog.Printf("Failed to fetch %s from %s@%s: %v", filename, repo, ref, err)
 			continue
 		}
+
+		output := content
 
 		// GitHub API returns base64-encoded content with embedded newlines (line-wrapping every ~76 chars).
 		// The `gh api --jq .content` output is a raw string value (no surrounding quotes).
@@ -321,7 +334,9 @@ func fetchRemoteActionYAML(repo, subdir, ref string) (*actionYAMLFile, error) {
 		return actionYAML, nil
 	}
 
-	return nil, fmt.Errorf("could not find action.yml or action.yaml in %s@%s (subdir=%q)", repo, ref, subdir)
+	return nil, NewOperationError("locate", "action YAML file", fmt.Sprintf("%s@%s", repo, ref),
+		fmt.Errorf("could not find action.yml or action.yaml in %s@%s (subdir=%q)", repo, ref, subdir),
+		"Verify the action repository and version exist, and that they contain an action.yml or action.yaml file; Example: actions/checkout@v4")
 }
 
 // readLocalActionYAML reads and parses a local action.yml file.
@@ -341,14 +356,17 @@ func readLocalActionYAML(localPath, markdownPath string) (*actionYAMLFile, error
 		return parseActionYAMLContent(content)
 	}
 
-	return nil, fmt.Errorf("could not find action.yml or action.yaml at %s", actionDir)
+	return nil, NewOperationError("locate", "local action YAML file", actionDir,
+		fmt.Errorf("could not find action.yml or action.yaml at %s", actionDir),
+		"Verify the local path exists and contains an action.yml or action.yaml file; Example: ./actions/my-action")
 }
 
 // parseActionYAMLContent parses raw action.yml YAML content.
 func parseActionYAMLContent(content []byte) (*actionYAMLFile, error) {
 	var parsed actionYAMLFile
 	if err := yaml.Unmarshal(content, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse action YAML: %w", err)
+		return nil, NewOperationError("parse", "action YAML content", "raw bytes", err,
+			"The action.yml file is not valid YAML. Check for syntax errors; Example: use a YAML validator")
 	}
 	return &parsed, nil
 }
