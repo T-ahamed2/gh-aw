@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -18,24 +19,24 @@ var resolverLog = logger.New("workflow:action_resolver")
 // ActionResolver handles resolving action SHAs using GitHub CLI
 type ActionResolver struct {
 	cache             *ActionCache
-	failedResolutions map[string]bool // tracks failed resolution attempts in current run (key: "repo@version")
-	usedCacheKeys     map[string]bool // tracks cache keys that were hit or newly set during this run
+	failedResolutions map[string]struct{} // tracks failed resolution attempts in current run (key: "repo@version")
+	usedCacheKeys     map[string]struct{} // tracks cache keys that were hit or newly set during this run
 }
 
 // NewActionResolver creates a new action resolver
 func NewActionResolver(cache *ActionCache) *ActionResolver {
 	return &ActionResolver{
 		cache:             cache,
-		failedResolutions: make(map[string]bool),
-		usedCacheKeys:     make(map[string]bool),
+		failedResolutions: make(map[string]struct{}),
+		usedCacheKeys:     make(map[string]struct{}),
 	}
 }
 
 // GetUsedCacheKeys returns the set of cache keys (in "repo@version" format) that
 // were successfully resolved from the cache or written to the cache during this run.
 // These represent the action pins actually referenced by the compiled workflows.
-func (r *ActionResolver) GetUsedCacheKeys() map[string]bool {
-	keys := make(map[string]bool, len(r.usedCacheKeys))
+func (r *ActionResolver) GetUsedCacheKeys() map[string]struct{} {
+	keys := make(map[string]struct{}, len(r.usedCacheKeys))
 	maps.Copy(keys, r.usedCacheKeys)
 	return keys
 }
@@ -43,7 +44,7 @@ func (r *ActionResolver) GetUsedCacheKeys() map[string]bool {
 // MarkCacheKeyAsUsed explicitly marks a cache key as used during this compilation run.
 // This is useful for compiler-generated actions that aren't resolved through ResolveSHA.
 func (r *ActionResolver) MarkCacheKeyAsUsed(cacheKey string) {
-	r.usedCacheKeys[cacheKey] = true
+	r.usedCacheKeys[cacheKey] = struct{}{}
 	resolverLog.Printf("Marked cache key as used: %s", cacheKey)
 }
 
@@ -76,8 +77,8 @@ func (r *ActionResolver) MarkCompilerGeneratedActionsAsUsed() {
 	marked := 0
 	for _, repo := range compilerGeneratedRepos {
 		if cacheKey, _, found := r.cache.FindAnyEntryForRepo(repo); found {
-			if !r.usedCacheKeys[cacheKey] {
-				r.usedCacheKeys[cacheKey] = true
+			if _, used := r.usedCacheKeys[cacheKey]; !used {
+				r.usedCacheKeys[cacheKey] = struct{}{}
 				marked++
 				resolverLog.Printf("Marked compiler-generated action as used: %s", cacheKey)
 			}
@@ -96,14 +97,14 @@ func (r *ActionResolver) ResolveSHA(ctx context.Context, repo, version string) (
 	// Create a cache key for tracking failed resolutions and cache lookups.
 	// Computed once here and reused below to avoid duplicate allocation.
 	cacheKey := formatActionCacheKey(repo, version)
-	r.usedCacheKeys[cacheKey] = true
+	r.usedCacheKeys[cacheKey] = struct{}{}
 
 	// Check if we've already failed to resolve this action in this run
-	if r.failedResolutions[cacheKey] {
+	if _, failed := r.failedResolutions[cacheKey]; failed {
 		resolverLog.Printf("Skipping resolution for %s@%s: already failed in this run", repo, version)
 		return "", NewOperationError("resolve", "action", fmt.Sprintf("%s@%s", repo, version),
-			fmt.Errorf("previously failed to resolve in this compilation run"),
-			"The GitHub API call for this action failed earlier. Check your network connection or the existence of the action/tag and retry; Example: gh aw compile")
+			errors.New("previously failed to resolve in this compilation run; should retry after checking network connectivity; Example: gh aw compile"),
+			"The GitHub API call for this action failed earlier. You should check your network connection or the existence of the action/tag and retry; Example: gh aw compile")
 	}
 
 	// Check cache first using the pre-computed key to avoid a second key allocation.
@@ -148,7 +149,7 @@ func (r *ActionResolver) ResolveSHA(ctx context.Context, repo, version string) (
 	if err != nil {
 		resolverLog.Printf("Failed to resolve %s@%s: %v", repo, version, err)
 		// Mark this resolution as failed for this compilation run
-		r.failedResolutions[cacheKey] = true
+		r.failedResolutions[cacheKey] = struct{}{}
 		resolverLog.Printf("Marked %s as failed, will not retry in this run", cacheKey)
 		return "", err
 	}

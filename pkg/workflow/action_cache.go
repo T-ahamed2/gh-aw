@@ -102,7 +102,7 @@ func (c *ActionCache) DeleteContainerPin(image string) {
 // This is used to keep actions-lock.json a faithful reflection of what the
 // compiled workflows actually reference — entries for old action versions that
 // are no longer used by any workflow are removed.
-func (c *ActionCache) PruneOrphanedEntries(referencedKeys map[string]bool) int {
+func (c *ActionCache) PruneOrphanedEntries(referencedKeys map[string]struct{}) int {
 	if len(referencedKeys) == 0 {
 		return 0
 	}
@@ -137,7 +137,8 @@ func (c *ActionCache) PruneOrphanedEntries(referencedKeys map[string]bool) int {
 
 	pruned := 0
 	for key := range c.Entries {
-		if !referencedKeys[key] && !isCompilerGenerated(key) {
+		_, referenced := referencedKeys[key]
+		if !referenced && !isCompilerGenerated(key) {
 			delete(c.Entries, key)
 			c.dirty = true
 			pruned++

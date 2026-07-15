@@ -612,12 +612,14 @@ func sumAICFromUsageJSONLFiles(filePaths []string) (float64, bool, error) {
 	found := false
 
 	for _, filePath := range filePaths {
-		file, err := os.Open(filepath.Clean(filePath))
-		if err != nil {
-			return 0, false, fmt.Errorf("failed to open usage JSONL file %s: %w", filePath, err)
-		}
+		err := func() error {
+			file, err := os.Open(filepath.Clean(filePath))
+			if err != nil {
+				return fmt.Errorf("failed to open usage JSONL file %s: %w", filePath, err)
+			}
+			defer file.Close()
 
-		scanner := bufio.NewScanner(file)
+			scanner := bufio.NewScanner(file)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
@@ -657,13 +659,13 @@ func sumAICFromUsageJSONLFiles(filePaths []string) (float64, bool, error) {
 				totalAIC += computedAIC
 				found = true
 			}
-		}
-		closeErr := file.Close()
-		if err := scanner.Err(); err != nil {
-			return 0, false, fmt.Errorf("error reading usage JSONL file %s: %w", filePath, err)
-		}
-		if closeErr != nil {
-			return 0, false, fmt.Errorf("failed to close usage JSONL file %s: %w", filePath, closeErr)
+			if err := scanner.Err(); err != nil {
+				return fmt.Errorf("error reading usage JSONL file %s: %w", filePath, err)
+			}
+			return nil
+		}()
+		if err != nil {
+			return 0, false, err
 		}
 	}
 

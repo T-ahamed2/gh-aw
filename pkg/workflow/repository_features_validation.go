@@ -193,8 +193,10 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 		if !ok {
 			repositoryFeaturesCache.Delete(repo)
 			return nil, NewOperationError("load", "repository feature cache entry", repo,
-				fmt.Errorf("expected *RepositoryFeatures but got %T", cached),
-				"The in-memory cache may be corrupted. Restarting the process will clear it; Example: gh aw compile")
+				NewValidationError("cache_entry", fmt.Sprintf("%T", cached),
+					"the in-memory cache entry has an unexpected type; expected *RepositoryFeatures",
+					"Restart the process to clear the corrupted in-memory cache; Example: gh aw compile"),
+				"The in-memory cache may be corrupted. You should restart the process to clear it; Example: gh aw compile")
 		}
 		repositoryFeaturesLog.Printf("Using cached repository features for: %s", repo)
 		return features, nil
@@ -228,8 +230,10 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	if !ok {
 		repositoryFeaturesCache.Delete(repo)
 		return nil, NewOperationError("load", "repository feature cache entry", repo,
-			fmt.Errorf("expected *RepositoryFeatures but got %T", actual),
-			"The in-memory cache may be corrupted. Restarting the process will clear it; Example: gh aw compile")
+			NewValidationError("cache_entry", fmt.Sprintf("%T", actual),
+				"the in-memory cache entry has an unexpected type; expected *RepositoryFeatures",
+				"Restart the process to clear the corrupted in-memory cache; Example: gh aw compile"),
+			"The in-memory cache may be corrupted. You should restart the process to clear it; Example: gh aw compile")
 	}
 
 	repositoryFeaturesLog.Printf("Cached repository features for: %s (discussions: %v, issues: %v)", repo, actualFeatures.HasDiscussions, actualFeatures.HasIssues)
@@ -277,7 +281,7 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	parts := strings.SplitN(repo, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return false, NewValidationError("repository", repo,
-			"repository must be in 'owner/repo' format",
+			"invalid repository format; Expected format: owner/repo",
 			"Check the repository specification; Example: github/gh-aw")
 	}
 	owner, name := parts[0], parts[1]
