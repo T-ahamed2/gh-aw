@@ -169,12 +169,15 @@ func getCurrentRepositoryUncached() (string, error) {
 	// This works when in a git repository with GitHub remote and respects GH_REPO
 	repo, err := repository.Current()
 	if err != nil {
-		return "", fmt.Errorf("failed to get current repository: %w", err)
+		return "", NewOperationError("get", "current repository", "", err,
+			"Ensure you are running in a Git repository with a configured GitHub remote; Example: git remote add origin https://github.com/owner/repo")
 	}
 
 	// Validate that owner and name are not empty
 	if repo.Owner == "" || repo.Name == "" {
-		return "", fmt.Errorf("repository owner or name is empty (owner: %q, name: %q)", repo.Owner, repo.Name)
+		return "", NewValidationError("repository", fmt.Sprintf("owner: %q, name: %q", repo.Owner, repo.Name),
+			"repository owner and name must not be empty",
+			"Check your Git remote configuration; Example: git remote set-url origin https://github.com/owner/repo")
 	}
 
 	repoName := fmt.Sprintf("%s/%s", repo.Owner, repo.Name)
@@ -189,7 +192,9 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 		features, ok := cached.(*RepositoryFeatures)
 		if !ok {
 			repositoryFeaturesCache.Delete(repo)
-			return nil, fmt.Errorf("invalid repository feature cache entry for %s: expected *RepositoryFeatures, got %T", repo, cached)
+			return nil, NewOperationError("load", "repository feature cache entry", repo,
+				fmt.Errorf("expected *RepositoryFeatures but got %T", cached),
+				"The in-memory cache may be corrupted. Restarting the process will clear it; Example: gh aw compile")
 		}
 		repositoryFeaturesLog.Printf("Using cached repository features for: %s", repo)
 		return features, nil
@@ -203,14 +208,16 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	// Check discussions
 	hasDiscussions, err := checkRepositoryHasDiscussionsUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check discussions: %w", err)
+		return nil, NewOperationError("check", "discussions status", repo, err,
+			"Ensure the GitHub CLI is authenticated and has permission to read repository settings; Example: gh auth refresh -s repo")
 	}
 	features.HasDiscussions = hasDiscussions
 
 	// Check issues
 	hasIssues, err := checkRepositoryHasIssuesUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check issues: %w", err)
+		return nil, NewOperationError("check", "issues status", repo, err,
+			"Ensure the GitHub CLI is authenticated and has permission to read repository settings; Example: gh auth refresh -s repo")
 	}
 	features.HasIssues = hasIssues
 
@@ -220,7 +227,9 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	actualFeatures, ok := actual.(*RepositoryFeatures)
 	if !ok {
 		repositoryFeaturesCache.Delete(repo)
-		return nil, fmt.Errorf("invalid repository feature cache entry for %s: expected *RepositoryFeatures, got %T", repo, actual)
+		return nil, NewOperationError("load", "repository feature cache entry", repo,
+			fmt.Errorf("expected *RepositoryFeatures but got %T", actual),
+			"The in-memory cache may be corrupted. Restarting the process will clear it; Example: gh aw compile")
 	}
 
 	repositoryFeaturesLog.Printf("Cached repository features for: %s (discussions: %v, issues: %v)", repo, actualFeatures.HasDiscussions, actualFeatures.HasIssues)
@@ -267,7 +276,9 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	// Split repo into owner and name
 	parts := strings.SplitN(repo, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return false, fmt.Errorf("invalid repository format: %s. Expected format: owner/repo. Example: github/gh-aw", repo)
+		return false, NewValidationError("repository", repo,
+			"repository must be in 'owner/repo' format",
+			"Check the repository specification; Example: github/gh-aw")
 	}
 	owner, name := parts[0], parts[1]
 
@@ -283,12 +294,14 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	stdOut, _, err := gh.Exec("api", "graphql", "-f", "query="+query,
 		"-f", "owner="+owner, "-f", "name="+name)
 	if err != nil {
-		return false, fmt.Errorf("failed to query discussions status: %w", err)
+		return false, NewOperationError("query", "discussions status via GraphQL", repo, err,
+			"Verify your network connection and GitHub CLI authentication; Example: gh auth status")
 	}
 
 	var response GraphQLResponse
 	if err := json.Unmarshal(stdOut.Bytes(), &response); err != nil {
-		return false, fmt.Errorf("failed to parse GraphQL response: %w", err)
+		return false, NewOperationError("parse", "GraphQL response", repo, err,
+			"Check for GitHub API service disruptions or unexpected response formats; Example: https://www.githubstatus.com/")
 	}
 
 	return response.Data.Repository.HasDiscussionsEnabled, nil
@@ -314,14 +327,16 @@ func checkRepositoryHasIssuesUncached(repo string) (bool, error) {
 	// Create REST client
 	client, err := api.DefaultRESTClient()
 	if err != nil {
-		return false, fmt.Errorf("failed to create REST client: %w", err)
+		return false, NewOperationError("create", "GitHub REST client", "", err,
+			"Verify your environment is correctly configured for the GitHub CLI; Example: export GH_TOKEN=your_token")
 	}
 
 	// Fetch repository data using REST client
 	var response RepositoryResponse
 	err = client.Get("repos/"+repo, &response)
 	if err != nil {
-		return false, fmt.Errorf("failed to query repository: %w", err)
+		return false, NewOperationError("query", "repository via REST", repo, err,
+			"Ensure the repository exists and your token has the 'repo' scope; Example: gh auth refresh -s repo")
 	}
 
 	return response.HasIssues, nil
