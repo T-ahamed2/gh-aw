@@ -156,31 +156,31 @@ func TestParseTagRefTSV(t *testing.T) {
 			name:        "empty input is rejected",
 			input:       "",
 			wantErr:     true,
-			errContains: "unexpected format",
+			errContains: "must be in tab-separated",
 		},
 		{
 			name:        "missing tab separator is rejected",
 			input:       commitSHA,
 			wantErr:     true,
-			errContains: "unexpected format",
+			errContains: "must be in tab-separated",
 		},
 		{
 			name:        "empty type field is rejected",
 			input:       commitSHA + "\t",
 			wantErr:     true,
-			errContains: "unexpected format",
+			errContains: "must be in tab-separated",
 		},
 		{
 			name:        "short SHA is rejected",
 			input:       "abc123\tcommit",
 			wantErr:     true,
-			errContains: "invalid SHA format",
+			errContains: "must be exactly 40 hex characters",
 		},
 		{
 			name:        "non-hex SHA is rejected",
 			input:       "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\tcommit",
 			wantErr:     true,
-			errContains: "invalid SHA format",
+			errContains: "must be exactly 40 hex characters",
 		},
 	}
 

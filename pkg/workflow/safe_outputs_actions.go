@@ -287,14 +287,23 @@ func fetchRemoteActionYAML(repo, subdir, ref string) (*actionYAMLFile, error) {
 		apiPath := fmt.Sprintf("/repos/%s/contents/%s?ref=%s", repo, contentPath, ref)
 		safeOutputActionsLog.Printf("Fetching action YAML from: %s", apiPath)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		cmd := ExecGHContext(ctx, "api", apiPath, "--jq", ".content")
-		output, err := cmd.Output()
-		cancel()
+		content, err := func() ([]byte, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			cmd := ExecGHContext(ctx, "api", apiPath, "--jq", ".content")
+			output, err := cmd.Output()
+			if err != nil {
+				return nil, err
+			}
+			return output, nil
+		}()
+
 		if err != nil {
 			safeOutputActionsLog.Printf("Failed to fetch %s from %s@%s: %v", filename, repo, ref, err)
 			continue
 		}
+
+		output := content
 
 		// GitHub API returns base64-encoded content with embedded newlines (line-wrapping every ~76 chars).
 		// The `gh api --jq .content` output is a raw string value (no surrounding quotes).
