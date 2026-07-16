@@ -404,4 +404,76 @@ func TestReadFileFromHEAD(t *testing.T) {
 		require.Error(t, err, "should fail when gitRoot is empty")
 		assert.Contains(t, err.Error(), "gitRoot must not be empty", "error should mention empty gitRoot")
 	})
+
+	t.Run("returns error for hyphen-prefixed path", func(t *testing.T) {
+		gitRoot, err := FindGitRoot()
+		require.NoError(t, err, "must be inside a git repository")
+
+		// Use a path that resolves to a relative path starting with a hyphen
+		hyphenPath := filepath.Join(gitRoot, "-u")
+		_, err = ReadFileFromHEAD(hyphenPath, gitRoot)
+		require.Error(t, err, "should fail for a hyphen-prefixed path")
+		assert.Contains(t, err.Error(), "invalid git argument", "error should mention invalid git argument")
+	})
+}
+
+func TestValidateGitArg(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{
+			name:    "valid branch name",
+			input:   "main",
+			wantErr: false,
+		},
+		{
+			name:    "valid ref",
+			input:   "refs/heads/feat",
+			wantErr: false,
+		},
+		{
+			name:    "valid path",
+			input:   "path/to/file.md",
+			wantErr: false,
+		},
+		{
+			name:    "valid hidden path",
+			input:   ".github/workflow.md",
+			wantErr: false,
+		},
+		{
+			name:    "invalid short flag",
+			input:   "-u",
+			wantErr: true,
+		},
+		{
+			name:    "invalid long flag",
+			input:   "--version",
+			wantErr: true,
+		},
+		{
+			name:    "invalid triple hyphen",
+			input:   "---foo",
+			wantErr: true,
+		},
+		{
+			name:    "empty string",
+			input:   "",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGitArg(tt.input)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "invalid git argument")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }

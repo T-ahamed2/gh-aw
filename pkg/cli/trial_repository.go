@@ -13,6 +13,7 @@ import (
 	"github.com/github/gh-aw/pkg/console"
 	"github.com/github/gh-aw/pkg/constants"
 	"github.com/github/gh-aw/pkg/fileutil"
+	"github.com/github/gh-aw/pkg/gitutil"
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/github/gh-aw/pkg/workflow"
 )
@@ -563,6 +564,9 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 
 	// If a version/tag/SHA is specified, checkout that ref
 	if cloneRepoVersion != "" {
+		if err := gitutil.ValidateGitArg(cloneRepoVersion); err != nil {
+			return err
+		}
 		checkoutCmd := exec.Command("git", "checkout", cloneRepoVersion)
 		if output, err := checkoutCmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to checkout ref '%s': %w (output: %s)", cloneRepoVersion, err, string(output))
