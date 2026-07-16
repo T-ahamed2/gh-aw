@@ -73,6 +73,10 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 		return "", fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
+
 	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
 	cloneOutput, err := cloneCmd.CombinedOutput()
 	if err != nil {
@@ -456,6 +460,10 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 	}
 	repoURL := fmt.Sprintf("%s/%s/%s.git", githubHost, owner, repo)
 
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
+
 	// Try to resolve the ref using git ls-remote
 	// Format: git ls-remote <repo> <ref>
 	cmd := exec.Command("git", "ls-remote", repoURL, ref)
@@ -625,6 +633,12 @@ func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string
 	// git archive command: git archive --remote=<repo> <ref> <path>
 	// #nosec G204 -- repoURL, ref, and path are from workflow import configuration authored by the
 	// developer; exec.Command with separate args (not shell execution) prevents shell injection.
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(path); err != nil {
+		return nil, err
+	}
 	cmd := exec.Command("git", "archive", "--remote="+repoURL, ref, path)
 	archiveOutput, err := cmd.Output()
 	if err != nil {
@@ -698,6 +712,13 @@ func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error
 
 	// Check if ref is a SHA (40 hex characters)
 	isSHA := len(ref) == 40 && gitutil.IsHexString(ref)
+
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(path); err != nil {
+		return nil, err
+	}
 
 	var cloneCmd *exec.Cmd
 	if isSHA {
@@ -1144,6 +1165,10 @@ func listDirAllFilesViaGitForHost(owner, repo, ref, dirPath, host string) ([]str
 		return nil, err
 	}
 
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
 	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", dirPath+"/")
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
@@ -1283,6 +1308,9 @@ func listDirAllFilesRecursivelyViaGitForHost(owner, repo, ref, dirPath, host str
 
 	// Normalise dirPath so it never has a trailing slash before we append one.
 	cleanDirPath := strings.TrimRight(dirPath, "/")
+	if err := gitutil.ValidateGitArg(cleanDirPath); err != nil {
+		return nil, err
+	}
 	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", cleanDirPath+"/")
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
@@ -1403,6 +1431,10 @@ func listDirSubdirsViaGitForHost(owner, repo, ref, dirPath, host string) ([]stri
 		return nil, err
 	}
 
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
 	// Use ls-tree -d to list only direct subdirectory entries.
 	lsTreeDirsCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "--name-only", "-d", "HEAD", dirPath+"/")
 	lsTreeDirsOutput, err := lsTreeDirsCmd.CombinedOutput()
@@ -1472,6 +1504,13 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
+
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(workflowPath); err != nil {
+		return nil, err
+	}
 
 	// Do a minimal clone using filter=blob:none for faster cloning (metadata only, no blobs)
 	// Use --depth=1 for shallow clone and --no-checkout to skip checkout initially
