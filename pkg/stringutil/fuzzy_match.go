@@ -16,6 +16,8 @@ var fuzzyMatchLog = logger.New("stringutil:fuzzy_match")
 //
 // This function is useful for "Did you mean?" suggestions when a user provides
 // an unrecognized value (e.g., a typo in an engine name or event type).
+//
+//nolint:largefunc
 func FindClosestMatches(target string, candidates []string, maxResults int) []string {
 	fuzzyMatchLog.Printf("FindClosestMatches: target=%q, candidates=%d, maxResults=%d", target, len(candidates), maxResults)
 	type match struct {
@@ -29,6 +31,15 @@ func FindClosestMatches(target string, candidates []string, maxResults int) []st
 	targetLower := strings.ToLower(target)
 
 	for _, candidate := range candidates {
+		// Performance optimization: length difference short-circuit before toLower/allocation
+		diff := len(target) - len(candidate)
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > maxDistance {
+			continue
+		}
+
 		candidateLower := strings.ToLower(candidate)
 
 		// Skip exact matches
@@ -69,6 +80,9 @@ func FindClosestMatches(target string, candidates []string, maxResults int) []st
 	}
 
 	fuzzyMatchLog.Printf("FindClosestMatches: returning %d match(es) within distance %d", len(results), maxDistance)
+	if len(results) == 0 {
+		return nil
+	}
 	return results
 }
 
@@ -76,21 +90,32 @@ func FindClosestMatches(target string, candidates []string, maxResults int) []st
 // This is the minimum number of single-character edits (insertions, deletions, or substitutions)
 // required to change one string into the other.
 func LevenshteinDistance(a, b string) int {
+	// Ensure b is the shorter string to minimize row allocation size
+	if len(a) < len(b) {
+		a, b = b, a
+	}
+
 	aLen := len(a)
 	bLen := len(b)
 
 	// Early exit for empty strings
-	if a == "" {
-		return bLen
-	}
 	if b == "" {
 		return aLen
 	}
 
-	// Create a 2D matrix for dynamic programming
-	// We only need the previous row, so we can optimize space
-	previousRow := make([]int, bLen+1)
-	currentRow := make([]int, bLen+1)
+	// We only need the previous row and current row.
+	// To avoid heap allocations for common small inputs (up to 64 chars),
+	// we use stack-allocated arrays sliced to the needed size.
+	var prevBuf, currBuf [65]int
+	var previousRow, currentRow []int
+
+	if bLen+1 <= 65 {
+		previousRow = prevBuf[:bLen+1]
+		currentRow = currBuf[:bLen+1]
+	} else {
+		previousRow = make([]int, bLen+1)
+		currentRow = make([]int, bLen+1)
+	}
 
 	// Initialize the first row (distance from empty string)
 	for i := 0; i <= bLen; i++ {
