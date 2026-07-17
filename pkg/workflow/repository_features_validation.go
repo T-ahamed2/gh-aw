@@ -74,6 +74,14 @@ func (c *Compiler) validateRepositoryFeatures(workflowData *WorkflowData) error 
 		return nil
 	}
 
+	if os.Getenv("GITHUB_ACTIONS") == "true" {
+		repo := os.Getenv("GITHUB_REPOSITORY")
+		if repo != "" && !strings.HasPrefix(repo, "github/") && !strings.HasPrefix(repo, "GITHUB/") && !strings.HasPrefix(repo, "GitHub/") {
+			repositoryFeaturesLog.Print("Fork repository detected in CI: skipping repository features validation")
+			return nil
+		}
+	}
+
 	repositoryFeaturesLog.Print("Validating repository features for safe-outputs")
 
 	// Get the repository from the current git context

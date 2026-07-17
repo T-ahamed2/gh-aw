@@ -17,6 +17,15 @@ var ErrNotGitRepository = errors.New("not in a git repository")
 
 var fullSHARegex = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
+// ValidateGitArg checks if a string begins with a hyphen, which could be exploited
+// as a command-line flag if passed to an external Git command.
+func ValidateGitArg(arg string) error {
+	if strings.HasPrefix(arg, "-") {
+		return fmt.Errorf("invalid git argument %q: prefix '-' should not be used; expected a valid ref or branch name; Example: main", arg)
+	}
+	return nil
+}
+
 // IsRateLimitError checks if an error message indicates a GitHub API rate limit error.
 // This is used to detect transient failures caused by hitting the GitHub API rate limit
 // (HTTP 403 "API rate limit exceeded" or HTTP 429 responses).
@@ -88,7 +97,7 @@ func FindGitRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		gitutilLog.Printf("Failed to get current directory: %v", err)
-		return "", fmt.Errorf("failed to get current directory: %w", err)
+		return "", fmt.Errorf("cannot retrieve current working directory; requires a valid workspace environment; verify process permissions; Example: check system environment; %w", err)
 	}
 
 	root, err := FindGitRootFrom(dir)
@@ -108,7 +117,7 @@ func FindGitRoot() (string, error) {
 func FindGitRootFrom(startDir string) (string, error) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve absolute path for %q: %w", startDir, err)
+		return "", fmt.Errorf("cannot resolve absolute path for %q; expected a valid directory or file path; verify path format; Example: /home/user/workspace; %w", startDir, err)
 	}
 	dir = filepath.Clean(dir)
 	for {
@@ -124,7 +133,7 @@ func FindGitRootFrom(startDir string) (string, error) {
 			if info.Mode().IsRegular() {
 				data, readErr := os.ReadFile(gitPath)
 				if readErr != nil {
-					return "", fmt.Errorf("failed to read .git file at %q: %w", gitPath, readErr)
+					return "", fmt.Errorf("cannot read git worktree reference file at %q; expected a valid worktree file with 'gitdir:' prefix; requires read permissions; Example: gitdir: /path/to/.git; %w", gitPath, readErr)
 				}
 				if strings.HasPrefix(strings.TrimSpace(string(data)), "gitdir:") {
 					return dir, nil
@@ -132,7 +141,7 @@ func FindGitRootFrom(startDir string) (string, error) {
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
 			// Unexpected error (e.g. permission denied) — surface it.
-			return "", fmt.Errorf("failed to stat %q: %w", gitPath, err)
+			return "", fmt.Errorf("cannot query filesystem status of %q; expected a valid directory or worktree file; requires read and execute permissions; Example: stat .git; %w", gitPath, err)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
