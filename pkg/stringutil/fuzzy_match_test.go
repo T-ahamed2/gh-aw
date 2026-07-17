@@ -151,3 +151,38 @@ func TestLevenshteinDistance(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkLevenshteinDistance(b *testing.B) {
+	// A typical small string comparison scenario
+	a := "copiliot"
+	candidate := "copilot"
+
+	b.ResetTimer()
+	for range b.N {
+		_ = LevenshteinDistance(a, candidate)
+	}
+}
+
+func BenchmarkLevenshteinDistance_Large(b *testing.B) {
+	// Comparison of larger strings (> 64 chars) to exercise the heap fallback path
+	a := "this-is-a-very-long-string-designed-to-exceed-the-stack-allocation-limit-of-sixty-four-characters-completely"
+	candidate := "this-is-another-very-long-string-designed-to-exceed-the-stack-allocation-limit-of-sixty-four-characters-completely"
+
+	b.ResetTimer()
+	for range b.N {
+		_ = LevenshteinDistance(a, candidate)
+	}
+}
+
+func BenchmarkFindClosestMatches_Realistic(b *testing.B) {
+	candidates := []string{
+		"copilot", "claude", "codex", "custom", "gemini", "crush", "gpt-4", "llama",
+		"github-actions", "workflow", "compiler", "validator", "linter", "parser",
+	}
+	target := "copiliot" // typo of copilot, close to it, others are long/far
+
+	b.ResetTimer()
+	for range b.N {
+		_ = FindClosestMatches(target, candidates, 3)
+	}
+}
