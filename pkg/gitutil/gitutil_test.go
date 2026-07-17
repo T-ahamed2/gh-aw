@@ -405,3 +405,49 @@ func TestReadFileFromHEAD(t *testing.T) {
 		assert.Contains(t, err.Error(), "gitRoot must not be empty", "error should mention empty gitRoot")
 	})
 }
+
+func TestValidateGitArg(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		expectedErr bool
+	}{
+		{
+			name:        "valid argument with no hyphen prefix",
+			input:       "main",
+			expectedErr: false,
+		},
+		{
+			name:        "valid argument with nested hyphen",
+			input:       "feature-branch-name",
+			expectedErr: false,
+		},
+		{
+			name:        "invalid argument with leading single hyphen",
+			input:       "-flag",
+			expectedErr: true,
+		},
+		{
+			name:        "invalid argument with leading double hyphen",
+			input:       "--other-flag",
+			expectedErr: true,
+		},
+		{
+			name:        "empty argument",
+			input:       "",
+			expectedErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGitArg(tt.input)
+			if tt.expectedErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "invalid git argument")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

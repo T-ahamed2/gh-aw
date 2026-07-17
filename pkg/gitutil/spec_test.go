@@ -397,3 +397,17 @@ func TestSpec_PublicAPI_ReadFileFromHEAD(t *testing.T) {
 		assert.Error(t, err, "ReadFileFromHEAD should return error when gitRoot is empty")
 	})
 }
+
+// TestSpec_PublicAPI_ValidateGitArg validates the behavior of ValidateGitArg.
+func TestSpec_PublicAPI_ValidateGitArg(t *testing.T) {
+	t.Run("allows standard branch names", func(t *testing.T) {
+		err := gitutil.ValidateGitArg("main")
+		assert.NoError(t, err)
+	})
+
+	t.Run("rejects hyphen prefixed inputs", func(t *testing.T) {
+		err := gitutil.ValidateGitArg("-b")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid git argument")
+	})
+}

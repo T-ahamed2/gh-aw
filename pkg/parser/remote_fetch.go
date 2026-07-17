@@ -46,6 +46,9 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 	if ref == "" {
 		return "", errors.New("git fallback requires a non-empty ref")
 	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
 
 	githubHost := GetGitHubHostForRepo(owner, repo)
 	if host != "" {
@@ -446,6 +449,9 @@ func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 // resolveRefToSHAViaGit resolves a git ref to SHA using git ls-remote
 // This is a fallback for when GitHub API authentication fails
 func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
 	remoteLog.Printf("Attempting git ls-remote fallback for ref resolution: %s/%s@%s", owner, repo, ref)
 
 	var githubHost string
@@ -500,6 +506,9 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 
 // resolveRefToSHA resolves a git ref (branch, tag, or SHA) to its commit SHA
 func resolveRefToSHA(owner, repo, ref, host string) (string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
 	// If ref is already a full SHA (40 hex characters), return it as-is
 	if len(ref) == 40 && gitutil.IsHexString(ref) {
 		return ref, nil
@@ -598,6 +607,13 @@ func resolveRefToSHAViaPublicAPI(owner, repo, ref string) (string, error) {
 // downloadFileViaGit downloads a file from a Git repository using git commands
 // This is a fallback for when GitHub API authentication fails
 func downloadFileViaGit(ctx context.Context, owner, repo, path, ref, host string) ([]byte, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	normalizedPath := filepath.ToSlash(path)
+	if err := gitutil.ValidateGitArg(normalizedPath); err != nil {
+		return nil, err
+	}
 	remoteLog.Printf("Attempting git fallback for %s/%s/%s@%s", owner, repo, path, ref)
 
 	// First, try via raw.githubusercontent.com — no auth required for public repos and
@@ -679,6 +695,13 @@ func downloadFileViaRawURL(ctx context.Context, owner, repo, filePath, ref strin
 // downloadFileViaGitClone downloads a file by shallow cloning the repository
 // This is used as a fallback when git archive doesn't work
 func downloadFileViaGitClone(owner, repo, path, ref, host string) ([]byte, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	normalizedPath := filepath.ToSlash(path)
+	if err := gitutil.ValidateGitArg(normalizedPath); err != nil {
+		return nil, err
+	}
 	remoteLog.Printf("Attempting git clone fallback for %s/%s/%s@%s", owner, repo, path, ref)
 
 	// Create a temporary directory for the shallow clone
@@ -1137,6 +1160,13 @@ func listDirAllFilesForHost(owner, repo, ref, dirPath, host string) ([]string, e
 }
 
 func listDirAllFilesViaGitForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	normalizedDirPath := filepath.ToSlash(dirPath)
+	if err := gitutil.ValidateGitArg(normalizedDirPath); err != nil {
+		return nil, err
+	}
 	remoteLog.Printf("Git fallback for listing all dir files: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
 	tmpDir, err := getOrCreateListRepoClone(owner, repo, ref, host)
@@ -1144,7 +1174,7 @@ func listDirAllFilesViaGitForHost(owner, repo, ref, dirPath, host string) ([]str
 		return nil, err
 	}
 
-	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", dirPath+"/")
+	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", "--", dirPath+"/")
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list dir files: %s", string(lsTreeOutput))
@@ -1274,6 +1304,13 @@ func listContentsRecursivelyWithDepth(client *api.RESTClient, owner, repo, ref, 
 }
 
 func listDirAllFilesRecursivelyViaGitForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	normalizedDirPath := filepath.ToSlash(dirPath)
+	if err := gitutil.ValidateGitArg(normalizedDirPath); err != nil {
+		return nil, err
+	}
 	remoteLog.Printf("Git fallback for listing all dir files recursively: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
 	tmpDir, err := getOrCreateListRepoClone(owner, repo, ref, host)
@@ -1283,7 +1320,7 @@ func listDirAllFilesRecursivelyViaGitForHost(owner, repo, ref, dirPath, host str
 
 	// Normalise dirPath so it never has a trailing slash before we append one.
 	cleanDirPath := strings.TrimRight(dirPath, "/")
-	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", cleanDirPath+"/")
+	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", "--", cleanDirPath+"/")
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list dir files recursively: %s", string(lsTreeOutput))
@@ -1396,6 +1433,13 @@ func listDirSubdirsForHost(owner, repo, ref, dirPath, host string) ([]string, er
 }
 
 func listDirSubdirsViaGitForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	normalizedDirPath := filepath.ToSlash(dirPath)
+	if err := gitutil.ValidateGitArg(normalizedDirPath); err != nil {
+		return nil, err
+	}
 	remoteLog.Printf("Git fallback for listing subdirs: %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
 	tmpDir, err := getOrCreateListRepoClone(owner, repo, ref, host)
@@ -1404,7 +1448,7 @@ func listDirSubdirsViaGitForHost(owner, repo, ref, dirPath, host string) ([]stri
 	}
 
 	// Use ls-tree -d to list only direct subdirectory entries.
-	lsTreeDirsCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "--name-only", "-d", "HEAD", dirPath+"/")
+	lsTreeDirsCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "--name-only", "-d", "HEAD", "--", dirPath+"/")
 	lsTreeDirsOutput, err := lsTreeDirsCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list tree subdirs: %s", string(lsTreeDirsOutput))
@@ -1458,6 +1502,13 @@ func listDirSubdirsViaPublicAPI(owner, repo, ref, dirPath string) ([]string, err
 }
 
 func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	normalizedWorkflowPath := filepath.ToSlash(workflowPath)
+	if err := gitutil.ValidateGitArg(normalizedWorkflowPath); err != nil {
+		return nil, err
+	}
 	remoteLog.Printf("Attempting git fallback for listing workflow files: %s/%s@%s (path: %s)", owner, repo, ref, workflowPath)
 
 	githubHost := GetGitHubHostForRepo(owner, repo)
@@ -1483,7 +1534,7 @@ func listWorkflowFilesViaGitForHost(owner, repo, ref, workflowPath, host string)
 	}
 
 	// Use git ls-tree to list files in the specified workflows directory
-	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", workflowPath+"/")
+	lsTreeCmd := exec.Command("git", "-C", tmpDir, "ls-tree", "-r", "--name-only", "HEAD", "--", workflowPath+"/")
 	lsTreeOutput, err := lsTreeCmd.CombinedOutput()
 	if err != nil {
 		remoteLog.Printf("Failed to list files: %s", string(lsTreeOutput))

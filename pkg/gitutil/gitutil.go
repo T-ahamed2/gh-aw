@@ -17,6 +17,15 @@ var ErrNotGitRepository = errors.New("not in a git repository")
 
 var fullSHARegex = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
+// ValidateGitArg checks if a string begins with a hyphen, which could be exploited
+// as a command-line flag if passed to an external Git command.
+func ValidateGitArg(arg string) error {
+	if strings.HasPrefix(arg, "-") {
+		return fmt.Errorf("invalid git argument %q: prefix '-' should not be used; expected a valid ref or branch name; Example: main", arg)
+	}
+	return nil
+}
+
 // IsRateLimitError checks if an error message indicates a GitHub API rate limit error.
 // This is used to detect transient failures caused by hitting the GitHub API rate limit
 // (HTTP 403 "API rate limit exceeded" or HTTP 429 responses).
