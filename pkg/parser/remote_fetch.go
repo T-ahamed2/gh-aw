@@ -73,7 +73,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp directory: %w", err)
+		return "", fmt.Errorf("cannot create temporary directory for clone; requires writable temporary space; verify process permissions; Example: check TEMP or TMPDIR environment; %w", err)
 	}
 
 	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
@@ -83,7 +83,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 			remoteLog.Printf("Failed to clean up temp directory %q: %v", tmpDir, cleanupErr)
 		}
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return "", fmt.Errorf("failed to clone repository for %s/%s@%s: %w", owner, repo, ref, err)
+		return "", fmt.Errorf("cannot clone repository %s/%s@%s; expected a valid public repository or correct git credentials; verify reference name and network access; Example: github/gh-aw@main; %w", owner, repo, ref, err)
 	}
 
 	existingDir, found := func() (string, bool) {
@@ -264,7 +264,7 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if stripped, ok := strings.CutPrefix(filepath.ToSlash(filePath), "/"); ok {
 		if !strings.HasPrefix(stripped, constants.GithubDir) && !strings.HasPrefix(stripped, ".agents/") {
 			remoteLog.Printf("Security: Path not within .github or .agents: %s", filePath)
-			return "", fmt.Errorf("security: path %s must be within .github or .agents folder", filePath)
+			return "", fmt.Errorf("security: path %s must be within %s or .agents/ folder; expected a valid workflow or agent path; should not use relative parent directory references; Example: .github/workflows/file.md", filePath, constants.GithubDir)
 		}
 	}
 	fullPath := filepath.Join(resolveBase, filePath)
