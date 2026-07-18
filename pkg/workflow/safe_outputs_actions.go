@@ -128,7 +128,7 @@ func parseActionUsesField(uses string) (*actionRef, error) {
 	// External action: split on "@" to get ref
 	atIdx := strings.LastIndex(uses, "@")
 	if atIdx < 0 {
-		return nil, fmt.Errorf("invalid action ref %q: missing @ref suffix", uses)
+		return nil, fmt.Errorf("unexpected action reference format %q: expected @ref suffix", uses)
 	}
 
 	refStr := uses[atIdx+1:]
@@ -137,7 +137,7 @@ func parseActionUsesField(uses string) (*actionRef, error) {
 	// Split repo from subdir: first two path segments are owner/repo
 	parts := strings.SplitN(repoAndPath, "/", 3)
 	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid action ref %q: expected owner/repo format", uses)
+		return nil, fmt.Errorf("unexpected action reference format %q: expected owner/repo structure", uses)
 	}
 
 	repo := parts[0] + "/" + parts[1]
@@ -287,11 +287,14 @@ func fetchRemoteActionYAML(repo, subdir, ref string) (*actionYAMLFile, error) {
 		apiPath := fmt.Sprintf("/repos/%s/contents/%s?ref=%s", repo, contentPath, ref)
 		safeOutputActionsLog.Printf("Fetching action YAML from: %s", apiPath)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		cmd := ExecGHContext(ctx, "api", apiPath, "--jq", ".content")
-		output, err := cmd.Output()
-		cancel()
+		fetchFunc := func() ([]byte, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			cmd := ExecGHContext(ctx, "api", apiPath, "--jq", ".content")
+			return cmd.Output()
+		}
+
+		output, err := fetchFunc()
 		if err != nil {
 			safeOutputActionsLog.Printf("Failed to fetch %s from %s@%s: %v", filename, repo, ref, err)
 			continue
@@ -348,7 +351,7 @@ func readLocalActionYAML(localPath, markdownPath string) (*actionYAMLFile, error
 func parseActionYAMLContent(content []byte) (*actionYAMLFile, error) {
 	var parsed actionYAMLFile
 	if err := yaml.Unmarshal(content, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse action YAML: %w", err)
+		return nil, fmt.Errorf("parse action YAML schema: %w; should verify document formatting and YAML syntax", err)
 	}
 	return &parsed, nil
 }
