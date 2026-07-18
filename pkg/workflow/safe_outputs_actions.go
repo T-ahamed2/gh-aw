@@ -128,7 +128,7 @@ func parseActionUsesField(uses string) (*actionRef, error) {
 	// External action: split on "@" to get ref
 	atIdx := strings.LastIndex(uses, "@")
 	if atIdx < 0 {
-		return nil, fmt.Errorf("invalid action ref %q: missing @ref suffix", uses)
+		return nil, fmt.Errorf("unexpected action reference format %q: expected @ref suffix", uses)
 	}
 
 	refStr := uses[atIdx+1:]
@@ -137,7 +137,7 @@ func parseActionUsesField(uses string) (*actionRef, error) {
 	// Split repo from subdir: first two path segments are owner/repo
 	parts := strings.SplitN(repoAndPath, "/", 3)
 	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid action ref %q: expected owner/repo format", uses)
+		return nil, fmt.Errorf("unexpected action reference format %q: expected owner/repo structure", uses)
 	}
 
 	repo := parts[0] + "/" + parts[1]
@@ -351,7 +351,7 @@ func readLocalActionYAML(localPath, markdownPath string) (*actionYAMLFile, error
 func parseActionYAMLContent(content []byte) (*actionYAMLFile, error) {
 	var parsed actionYAMLFile
 	if err := yaml.Unmarshal(content, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse action YAML: %w", err)
+		return nil, fmt.Errorf("parse action YAML schema: %w; should verify document formatting and YAML syntax", err)
 	}
 	return &parsed, nil
 }
