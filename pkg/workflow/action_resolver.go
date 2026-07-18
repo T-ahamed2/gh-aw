@@ -226,17 +226,26 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 		// Each peel gets its own fresh 30-second timeout derived from the original
 		// caller context (ctx), not from callCtx, so we don't accidentally shrink
 		// the budget for subsequent peels.
-		peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
-		cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
-		ForceGHHostEnv(cmd2, "github.com")
-		output2, peelErr := cmd2.Output()
-		peelCancel()
-		if peelErr != nil {
-			return "", fmt.Errorf("failed to peel annotated tag %s@%s: %w", repo, version, peelErr)
+		peelFunc := func() (string, string, error) {
+			peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
+			defer peelCancel()
+			cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
+			ForceGHHostEnv(cmd2, "github.com")
+			output2, peelErr := cmd2.Output()
+			if peelErr != nil {
+				return "", "", fmt.Errorf("peel annotated tag %s@%s: %w; should verify tag reference and network connectivity", repo, version, peelErr)
+			}
+			s, t, parseErr := ParseTagRefTSV(string(output2))
+			if parseErr != nil {
+				return "", "", fmt.Errorf("parse peeled tag API response for %s@%s: %w; should verify API payload structure", repo, version, parseErr)
+			}
+			return s, t, nil
 		}
-		sha, objType, err = ParseTagRefTSV(string(output2))
-		if err != nil {
-			return "", fmt.Errorf("failed to parse peeled tag API response for %s@%s: %w", repo, version, err)
+
+		var peelErr error
+		sha, objType, peelErr = peelFunc()
+		if peelErr != nil {
+			return "", peelErr
 		}
 	}
 	resolverLog.Printf("Resolved %s@%s to %s SHA: %s", repo, version, objType, sha)
