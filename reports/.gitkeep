@@ -1,0 +1,1 @@
+# Keep reports directory so that the markdown link check action does not fail when checking links in reports.
