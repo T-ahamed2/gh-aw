@@ -157,22 +157,38 @@ func SanitizeErrorMessage(message string) string {
 
 	sanitizeLog.Printf("Sanitizing error message: length=%d", len(message))
 
+	sanitized := message
+
 	// Redact uppercase snake_case patterns (e.g., MY_SECRET_KEY, API_TOKEN)
-	sanitized := secretNamePattern.ReplaceAllStringFunc(message, func(match string) string {
-		// Don't redact common workflow keywords
-		if _, ok := commonWorkflowKeywords[match]; ok {
-			return match
-		}
-		// Don't redact gh-aw public configuration variables (e.g., GH_AW_SKIP_NPX_VALIDATION)
-		if strings.HasPrefix(match, "GH_AW_") {
-			return match
-		}
-		sanitizeLog.Printf("Redacted snake_case secret pattern: %s", match)
-		return "[REDACTED]"
-	})
+	// Must contain at least one underscore to match secretNamePattern.
+	// Performance optimization: check strings.Contains first, and only call
+	// ReplaceAllStringFunc if present.
+	if strings.Contains(message, "_") {
+		sanitized = secretNamePattern.ReplaceAllStringFunc(sanitized, func(match string) string {
+			// Don't redact common workflow keywords
+			if _, ok := commonWorkflowKeywords[match]; ok {
+				return match
+			}
+			// Don't redact gh-aw public configuration variables (e.g., GH_AW_SKIP_NPX_VALIDATION)
+			if strings.HasPrefix(match, "GH_AW_") {
+				return match
+			}
+			sanitizeLog.Printf("Redacted snake_case secret pattern: %s", match)
+			return "[REDACTED]"
+		})
+	}
 
 	// Redact PascalCase patterns ending with security suffixes (e.g., GitHubToken, ApiKey)
-	sanitized = pascalCaseSecretPattern.ReplaceAllString(sanitized, "[REDACTED]")
+	// Must contain at least one of the target suffixes.
+	// Performance optimization: check substrings first before performing replacement.
+	if strings.Contains(message, "Token") ||
+		strings.Contains(message, "Key") ||
+		strings.Contains(message, "Secret") ||
+		strings.Contains(message, "Password") ||
+		strings.Contains(message, "Credential") ||
+		strings.Contains(message, "Auth") {
+		sanitized = pascalCaseSecretPattern.ReplaceAllString(sanitized, "[REDACTED]")
+	}
 
 	if sanitized != message {
 		sanitizeLog.Print("Error message sanitization applied redactions")
