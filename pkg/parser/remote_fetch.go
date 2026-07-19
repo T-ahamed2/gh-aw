@@ -46,6 +46,9 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 	if ref == "" {
 		return "", errors.New("git fallback requires a non-empty ref")
 	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
 
 	githubHost := GetGitHubHostForRepo(owner, repo)
 	if host != "" {
@@ -70,7 +73,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp directory: %w", err)
+		return "", fmt.Errorf("create temp directory: %w; should check OS temporary folder permissions", err)
 	}
 
 	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
@@ -80,7 +83,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 			remoteLog.Printf("Failed to clean up temp directory %q: %v", tmpDir, cleanupErr)
 		}
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return "", fmt.Errorf("failed to clone repository for %s/%s@%s: %w", owner, repo, ref, err)
+		return "", fmt.Errorf("clone repository %s/%s@%s: %w; should verify repository URL and reference name", owner, repo, ref, err)
 	}
 
 	existingDir, found := func() (string, bool) {
@@ -271,7 +274,7 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if err != nil || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) || filepath.IsAbs(relativePath) {
 		allowedFolder := filepath.Base(normalizedSecurityBase)
 		remoteLog.Printf("Security: Path escapes allowed folder: %s (resolves to: %s)", filePath, relativePath)
-		return "", fmt.Errorf("security: path %s must be within %s folder (resolves to: %s)", filePath, allowedFolder, relativePath)
+		return "", fmt.Errorf("security: path %s should be within %s folder (resolves to: %s)", filePath, allowedFolder, relativePath)
 	}
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
@@ -500,6 +503,10 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 
 // resolveRefToSHA resolves a git ref (branch, tag, or SHA) to its commit SHA
 func resolveRefToSHA(owner, repo, ref, host string) (string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
+
 	// If ref is already a full SHA (40 hex characters), return it as-is
 	if len(ref) == 40 && gitutil.IsHexString(ref) {
 		return ref, nil
@@ -894,6 +901,13 @@ func downloadFileFromGitHub(owner, repo, path, ref string) ([]byte, error) {
 }
 
 func downloadFileFromGitHubWithDepth(owner, repo, path, ref string, symlinkDepth int, host string) ([]byte, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(path); err != nil {
+		return nil, err
+	}
+
 	client, err := createRESTClientForHost(host)
 	if err != nil {
 		if gitutil.IsAuthError(err.Error()) {
@@ -1033,6 +1047,13 @@ func ListWorkflowFilesForHost(owner, repo, ref, workflowPath, host string) ([]st
 }
 
 func listWorkflowFilesForHost(owner, repo, ref, workflowPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(workflowPath); err != nil {
+		return nil, err
+	}
+
 	remoteLog.Printf("Listing workflow files for %s/%s@%s (path: %s)", owner, repo, ref, workflowPath)
 
 	client, err := createRESTClientForHost(host)
@@ -1092,6 +1113,13 @@ func ListDirAllFilesForHost(owner, repo, ref, dirPath, host string) ([]string, e
 }
 
 func listDirAllFilesForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
 	remoteLog.Printf("Listing all files in dir for %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
 	client, err := createRESTClientForHost(host)
@@ -1205,6 +1233,13 @@ func ListDirAllFilesRecursivelyForHost(owner, repo, ref, dirPath, host string) (
 }
 
 func listDirAllFilesRecursivelyForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
 	remoteLog.Printf("Listing all files recursively in dir for %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
 	client, err := createRESTClientForHost(host)
@@ -1351,6 +1386,13 @@ func ListDirSubdirsForHost(owner, repo, ref, dirPath, host string) ([]string, er
 }
 
 func listDirSubdirsForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
 	remoteLog.Printf("Listing subdirs in %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
 	client, err := createRESTClientForHost(host)
