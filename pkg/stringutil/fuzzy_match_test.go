@@ -124,6 +124,32 @@ func TestFindClosestMatches(t *testing.T) {
 	}
 }
 
+func BenchmarkFindClosestMatches(b *testing.B) {
+	candidates := []string{
+		"copilot", "claude", "codex", "custom", "contents", "checks", "issues",
+		"actions", "pull_request", "workflows", "environment", "permissions",
+	}
+	b.ResetTimer()
+	for range b.N {
+		_ = FindClosestMatches("copiliot", candidates, 3)
+		_ = FindClosestMatches("cntents", candidates, 3)
+		_ = FindClosestMatches("completely_different_string_that_is_very_long", candidates, 3)
+	}
+}
+
+func BenchmarkLevenshteinDistance(b *testing.B) {
+	b.Run("ShortStrings", func(b *testing.B) {
+		for range b.N {
+			_ = LevenshteinDistance("copiliot", "copilot")
+		}
+	})
+	b.Run("LongStrings", func(b *testing.B) {
+		for range b.N {
+			_ = LevenshteinDistance("completely_different_string_that_is_very_long", "another_completely_different_string_that_is_very_long")
+		}
+	})
+}
+
 func TestLevenshteinDistance(t *testing.T) {
 	tests := []struct {
 		name string
