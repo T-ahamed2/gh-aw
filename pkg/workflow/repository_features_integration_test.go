@@ -102,8 +102,8 @@ func TestRepositoryFeaturesValidationIntegration(t *testing.T) {
 
 		if hasIssues && err != nil {
 			t.Errorf("Expected no error when issues are enabled, got: %v", err)
-		} else if !hasIssues && err == nil {
-			t.Error("Expected error when issues are disabled, got none")
+		} else if !hasIssues && err != nil {
+			t.Errorf("Expected no error (validation should only warn) even when issues are disabled, got: %v", err)
 		}
 	})
 }
