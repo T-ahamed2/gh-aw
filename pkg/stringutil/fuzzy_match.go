@@ -27,12 +27,24 @@ func FindClosestMatches(target string, candidates []string, maxResults int) []st
 
 	var matches []match
 	targetLower := strings.ToLower(target)
+	targetLen := len(targetLower)
 
 	for _, candidate := range candidates {
 		candidateLower := strings.ToLower(candidate)
 
 		// Skip exact matches
 		if targetLower == candidateLower {
+			continue
+		}
+
+		// Length short-circuit: if length difference is greater than maxDistance,
+		// the Levenshtein distance is guaranteed to exceed maxDistance.
+		candidateLen := len(candidateLower)
+		lenDiff := targetLen - candidateLen
+		if lenDiff < 0 {
+			lenDiff = -lenDiff
+		}
+		if lenDiff > maxDistance {
 			continue
 		}
 
@@ -76,32 +88,44 @@ func FindClosestMatches(target string, candidates []string, maxResults int) []st
 // This is the minimum number of single-character edits (insertions, deletions, or substitutions)
 // required to change one string into the other.
 func LevenshteinDistance(a, b string) int {
+	// Ensure a is the longer string (or equal), b is the shorter string
+	// to minimize DP array space allocation.
+	if len(a) < len(b) {
+		a, b = b, a
+	}
+
 	aLen := len(a)
 	bLen := len(b)
 
 	// Early exit for empty strings
-	if a == "" {
-		return bLen
-	}
 	if b == "" {
 		return aLen
 	}
 
-	// Create a 2D matrix for dynamic programming
-	// We only need the previous row, so we can optimize space
-	previousRow := make([]int, bLen+1)
-	currentRow := make([]int, bLen+1)
+	// Create a single-row dynamic programming array
+	// If the shorter string b has length <= 64, use a stack-allocated buffer
+	// to completely avoid heap allocations.
+	var row []int
+	var allocBuf [65]int
+	if bLen <= 64 {
+		row = allocBuf[:bLen+1]
+	} else {
+		row = make([]int, bLen+1)
+	}
 
-	// Initialize the first row (distance from empty string)
+	// Initialize row (distance from empty string)
 	for i := 0; i <= bLen; i++ {
-		previousRow[i] = i
+		row[i] = i
 	}
 
 	// Calculate distances for each character in string a
 	for i := 1; i <= aLen; i++ {
-		currentRow[0] = i // Distance from empty string
+		prevCorner := row[0] // represents previousRow[j-1]
+		row[0] = i           // represents currentRow[0] (distance from empty string)
 
 		for j := 1; j <= bLen; j++ {
+			temp := row[j] // stores previousRow[j] for the next iteration's prevCorner
+
 			// Cost of substitution (0 if characters match, 1 otherwise)
 			cost := 1
 			if a[i-1] == b[j-1] {
@@ -109,19 +133,14 @@ func LevenshteinDistance(a, b string) int {
 			}
 
 			// Minimum of:
-			// - Deletion: previousRow[j] + 1
-			// - Insertion: currentRow[j-1] + 1
-			// - Substitution: previousRow[j-1] + cost
-			deletion := previousRow[j] + 1
-			insertion := currentRow[j-1] + 1
-			substitution := previousRow[j-1] + cost
+			// - Deletion: previousRow[j] + 1 -> temp + 1
+			// - Insertion: currentRow[j-1] + 1 -> row[j-1] + 1
+			// - Substitution: previousRow[j-1] + cost -> prevCorner + cost
+			row[j] = min(temp+1, min(row[j-1]+1, prevCorner+cost))
 
-			currentRow[j] = min(deletion, min(insertion, substitution))
+			prevCorner = temp
 		}
-
-		// Swap rows for next iteration
-		previousRow, currentRow = currentRow, previousRow
 	}
 
-	return previousRow[bLen]
+	return row[bLen]
 }
