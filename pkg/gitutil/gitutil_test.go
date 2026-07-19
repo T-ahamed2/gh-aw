@@ -404,4 +404,70 @@ func TestReadFileFromHEAD(t *testing.T) {
 		require.Error(t, err, "should fail when gitRoot is empty")
 		assert.Contains(t, err.Error(), "gitRoot must not be empty", "error should mention empty gitRoot")
 	})
+
+	t.Run("returns error when relative path starts with a hyphen", func(t *testing.T) {
+		gitRoot, err := FindGitRoot()
+		require.NoError(t, err, "must be inside a git repository")
+
+		// Create a temporary directory outside gitRoot, but with a hyphen-prefixed name inside
+		hyphenFile := filepath.Join(gitRoot, "-test-file.txt")
+		_, err = ReadFileFromHEAD(hyphenFile, gitRoot)
+		require.Error(t, err, "should fail when path starts with a hyphen")
+		assert.Contains(t, err.Error(), "starts with a hyphen", "error should mention starts with a hyphen")
+	})
+}
+
+func TestValidateGitArg(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		expectError bool
+	}{
+		{
+			name:        "valid ref",
+			input:       "main",
+			expectError: false,
+		},
+		{
+			name:        "valid path",
+			input:       "pkg/gitutil/gitutil.go",
+			expectError: false,
+		},
+		{
+			name:        "valid sha",
+			input:       "abcdef0123456789abcdef0123456789abcdef01",
+			expectError: false,
+		},
+		{
+			name:        "single hyphen flag",
+			input:       "-f",
+			expectError: true,
+		},
+		{
+			name:        "double hyphen flag",
+			input:       "--force",
+			expectError: true,
+		},
+		{
+			name:        "hyphen prefix in ref name",
+			input:       "-branch",
+			expectError: true,
+		},
+		{
+			name:        "hyphen prefix in path",
+			input:       "-path/to/file",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGitArg(tt.input)
+			if tt.expectError {
+				assert.Error(t, err, "ValidateGitArg(%q) should return an error", tt.input)
+			} else {
+				assert.NoError(t, err, "ValidateGitArg(%q) should not return an error", tt.input)
+			}
+		})
+	}
 }

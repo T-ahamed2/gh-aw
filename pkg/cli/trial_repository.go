@@ -13,6 +13,7 @@ import (
 	"github.com/github/gh-aw/pkg/console"
 	"github.com/github/gh-aw/pkg/constants"
 	"github.com/github/gh-aw/pkg/fileutil"
+	"github.com/github/gh-aw/pkg/gitutil"
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/github/gh-aw/pkg/workflow"
 )
@@ -476,6 +477,10 @@ func modifyWorkflowForTrialMode(tempDir, workflowName, logicalRepoSlug string, v
 
 // commitAndPushWorkflow commits and pushes the workflow changes
 func commitAndPushWorkflow(tempDir, workflowName string, verbose bool) error {
+	if err := gitutil.ValidateGitArg(workflowName); err != nil {
+		return err
+	}
+
 	fmt.Fprintln(os.Stderr, console.FormatInfoMessage("Committing workflow and lock files to host repository"))
 
 	// Add all changes
@@ -563,6 +568,9 @@ func cloneRepoContentsIntoHost(cloneRepoSlug string, cloneRepoVersion string, ho
 
 	// If a version/tag/SHA is specified, checkout that ref
 	if cloneRepoVersion != "" {
+		if err := gitutil.ValidateGitArg(cloneRepoVersion); err != nil {
+			return err
+		}
 		checkoutCmd := exec.Command("git", "checkout", cloneRepoVersion)
 		if output, err := checkoutCmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to checkout ref '%s': %w (output: %s)", cloneRepoVersion, err, string(output))
