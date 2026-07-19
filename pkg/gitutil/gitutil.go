@@ -97,7 +97,7 @@ func FindGitRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		gitutilLog.Printf("Failed to get current directory: %v", err)
-		return "", fmt.Errorf("failed to get current directory: %w", err)
+		return "", fmt.Errorf("retrieve current directory: %w; should check directory permissions", err)
 	}
 
 	root, err := FindGitRootFrom(dir)
@@ -117,7 +117,7 @@ func FindGitRoot() (string, error) {
 func FindGitRootFrom(startDir string) (string, error) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve absolute path for %q: %w", startDir, err)
+		return "", fmt.Errorf("resolve absolute path for %q: %w; should check path validity", startDir, err)
 	}
 	dir = filepath.Clean(dir)
 	for {
@@ -133,7 +133,7 @@ func FindGitRootFrom(startDir string) (string, error) {
 			if info.Mode().IsRegular() {
 				data, readErr := os.ReadFile(gitPath)
 				if readErr != nil {
-					return "", fmt.Errorf("failed to read .git file at %q: %w", gitPath, readErr)
+					return "", fmt.Errorf("read .git file at %q: %w; should check file permissions", gitPath, readErr)
 				}
 				if strings.HasPrefix(strings.TrimSpace(string(data)), "gitdir:") {
 					return dir, nil
@@ -141,7 +141,7 @@ func FindGitRootFrom(startDir string) (string, error) {
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
 			// Unexpected error (e.g. permission denied) — surface it.
-			return "", fmt.Errorf("failed to stat %q: %w", gitPath, err)
+			return "", fmt.Errorf("stat %q: %w; should check file existence and permissions", gitPath, err)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
