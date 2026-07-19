@@ -158,24 +158,24 @@ func FindGitRootFrom(startDir string) (string, error) {
 // Use this when the caller already knows the git root (e.g. from a cached value).
 func ReadFileFromHEAD(filePath, gitRoot string) (string, error) {
 	if gitRoot == "" {
-		return "", fmt.Errorf("gitRoot must not be empty when reading %q from HEAD", filePath)
+		return "", fmt.Errorf("gitRoot should be non-empty when reading %q from HEAD", filePath)
 	}
 
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
-		return "", fmt.Errorf("cannot resolve absolute path for %q: %w", filePath, err)
+		return "", fmt.Errorf("resolve absolute path for %q: %w; should check path validity", filePath, err)
 	}
 
 	// git show requires the path to be relative to the repository root and to use
 	// forward slashes even on Windows.
 	relPath, err := filepath.Rel(gitRoot, absPath)
 	if err != nil {
-		return "", fmt.Errorf("cannot compute path of %q relative to git root %q: %w", absPath, gitRoot, err)
+		return "", fmt.Errorf("compute relative path of %q to git root %q: %w; should check repository location", absPath, gitRoot, err)
 	}
 
 	// Reject paths that escape the repository (e.g. "../secret").
 	if strings.HasPrefix(relPath, "..") {
-		return "", fmt.Errorf("path %q is outside the git repository root %q", filePath, gitRoot)
+		return "", fmt.Errorf("resolve path %q: should be within the git repository root %q", filePath, gitRoot)
 	}
 
 	relPath = filepath.ToSlash(relPath)
