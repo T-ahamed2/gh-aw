@@ -132,9 +132,11 @@ func (c *Compiler) validateRepositoryFeatures(workflowData *WorkflowData) error 
 			}
 			// Continue to return aggregated errors even if this check fails
 		} else if !hasIssues {
-			issueErr := fmt.Errorf("workflow uses safe-outputs.create-issue but repository %s does not have issues enabled. Enable issues in repository settings or remove create-issue from safe-outputs", repo)
-			if returnErr := collector.Add(issueErr); returnErr != nil {
-				return returnErr // Fail-fast mode
+			// Changed to warning instead of error to avoid blocking E2E recompile or CI jobs on forked repositories where issues are disabled
+			warningMsg := fmt.Sprintf("Repository %s may not have issues enabled. The workflow will attempt to create issues at runtime. If creation fails, enable issues in repository settings.", repo)
+			repositoryFeaturesLog.Printf("Warning: %s", warningMsg)
+			if c.verbose {
+				fmt.Fprintln(os.Stderr, console.FormatWarningMessage(warningMsg))
 			}
 		}
 	}
@@ -165,12 +167,12 @@ func getCurrentRepositoryUncached() (string, error) {
 	// This works when in a git repository with GitHub remote and respects GH_REPO
 	repo, err := repository.Current()
 	if err != nil {
-		return "", fmt.Errorf("failed to get current repository: %w", err)
+		return "", fmt.Errorf("retrieve current repository: %w; should check git configuration and remote settings", err)
 	}
 
 	// Validate that owner and name are not empty
 	if repo.Owner == "" || repo.Name == "" {
-		return "", fmt.Errorf("repository owner or name is empty (owner: %q, name: %q)", repo.Owner, repo.Name)
+		return "", fmt.Errorf("verify current repository owner or name: empty value detected (owner: %q, name: %q); expected valid owner and name", repo.Owner, repo.Name)
 	}
 
 	repoName := fmt.Sprintf("%s/%s", repo.Owner, repo.Name)
@@ -185,7 +187,7 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 		features, ok := cached.(*RepositoryFeatures)
 		if !ok {
 			repositoryFeaturesCache.Delete(repo)
-			return nil, fmt.Errorf("invalid repository feature cache entry for %s: expected *RepositoryFeatures, got %T", repo, cached)
+			return nil, fmt.Errorf("verify repository feature cache entry for %s: expected *RepositoryFeatures, got %T; should check cache logic", repo, cached)
 		}
 		repositoryFeaturesLog.Printf("Using cached repository features for: %s", repo)
 		return features, nil
@@ -199,14 +201,14 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	// Check discussions
 	hasDiscussions, err := checkRepositoryHasDiscussionsUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check discussions: %w", err)
+		return nil, fmt.Errorf("verify discussions status: %w; should check network connection and authorization", err)
 	}
 	features.HasDiscussions = hasDiscussions
 
 	// Check issues
 	hasIssues, err := checkRepositoryHasIssuesUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check issues: %w", err)
+		return nil, fmt.Errorf("verify issues status: %w; should check network connection and authorization", err)
 	}
 	features.HasIssues = hasIssues
 
@@ -216,7 +218,7 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	actualFeatures, ok := actual.(*RepositoryFeatures)
 	if !ok {
 		repositoryFeaturesCache.Delete(repo)
-		return nil, fmt.Errorf("invalid repository feature cache entry for %s: expected *RepositoryFeatures, got %T", repo, actual)
+		return nil, fmt.Errorf("verify repository feature cache storage for %s: expected *RepositoryFeatures, got %T; should check sync.Map usage", repo, actual)
 	}
 
 	repositoryFeaturesLog.Printf("Cached repository features for: %s (discussions: %v, issues: %v)", repo, actualFeatures.HasDiscussions, actualFeatures.HasIssues)
@@ -263,7 +265,7 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	// Split repo into owner and name
 	parts := strings.SplitN(repo, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return false, fmt.Errorf("invalid repository format: %s. Expected format: owner/repo. Example: github/gh-aw", repo)
+		return false, fmt.Errorf("verify repository format for %s: expected format owner/repo; should use valid repository slug", repo)
 	}
 	owner, name := parts[0], parts[1]
 
@@ -279,12 +281,12 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	stdOut, _, err := gh.Exec("api", "graphql", "-f", "query="+query,
 		"-f", "owner="+owner, "-f", "name="+name)
 	if err != nil {
-		return false, fmt.Errorf("failed to query discussions status: %w", err)
+		return false, fmt.Errorf("query discussions status via GraphQL: %w; should check API token and network connection", err)
 	}
 
 	var response GraphQLResponse
 	if err := json.Unmarshal(stdOut.Bytes(), &response); err != nil {
-		return false, fmt.Errorf("failed to parse GraphQL response: %w", err)
+		return false, fmt.Errorf("parse GraphQL response: %w; expected valid JSON schema response", err)
 	}
 
 	return response.Data.Repository.HasDiscussionsEnabled, nil
@@ -310,14 +312,14 @@ func checkRepositoryHasIssuesUncached(repo string) (bool, error) {
 	// Create REST client
 	client, err := api.DefaultRESTClient()
 	if err != nil {
-		return false, fmt.Errorf("failed to create REST client: %w", err)
+		return false, fmt.Errorf("initialize REST client: %w; should check authorization and environment setup", err)
 	}
 
 	// Fetch repository data using REST client
 	var response RepositoryResponse
 	err = client.Get("repos/"+repo, &response)
 	if err != nil {
-		return false, fmt.Errorf("failed to query repository: %w", err)
+		return false, fmt.Errorf("query repository metadata: %w; should verify network connection and authorization", err)
 	}
 
 	return response.HasIssues, nil
