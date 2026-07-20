@@ -226,13 +226,18 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 		// Each peel gets its own fresh 30-second timeout derived from the original
 		// caller context (ctx), not from callCtx, so we don't accidentally shrink
 		// the budget for subsequent peels.
-		peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
-		cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
-		ForceGHHostEnv(cmd2, "github.com")
-		output2, peelErr := cmd2.Output()
-		peelCancel()
-		if peelErr != nil {
-			return "", fmt.Errorf("failed to peel annotated tag %s@%s: %w", repo, version, peelErr)
+		var output2 []byte
+		err = func() error {
+			peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
+			defer peelCancel()
+			cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
+			ForceGHHostEnv(cmd2, "github.com")
+			var peelErr error
+			output2, peelErr = cmd2.Output()
+			return peelErr
+		}()
+		if err != nil {
+			return "", fmt.Errorf("failed to peel annotated tag %s@%s: %w", repo, version, err)
 		}
 		sha, objType, err = ParseTagRefTSV(string(output2))
 		if err != nil {
