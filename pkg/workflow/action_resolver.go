@@ -101,7 +101,7 @@ func (r *ActionResolver) ResolveSHA(ctx context.Context, repo, version string) (
 	// Check if we've already failed to resolve this action in this run
 	if r.failedResolutions[cacheKey] {
 		resolverLog.Printf("Skipping resolution for %s@%s: already failed in this run", repo, version)
-		return "", fmt.Errorf("previously failed to resolve %s@%s in this compilation run", repo, version)
+		return "", fmt.Errorf("resolve action %s@%s: previously failed to resolve in this compilation run; should check previous state", repo, version)
 	}
 
 	// Check cache first using the pre-computed key to avoid a second key allocation.
@@ -169,12 +169,12 @@ func ParseTagRefTSV(line string) (sha, objType string, err error) {
 	line = strings.TrimSpace(line)
 	parts := strings.SplitN(line, "\t", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("unexpected format: %q", line)
+		return "", "", fmt.Errorf("parse tag reference: unexpected format %q; expected tab-separated SHA and type (example: '<sha>\ttype')", line)
 	}
 	sha = parts[0]
 	objType = parts[1]
 	if len(sha) != 40 || !gitutil.IsHexString(sha) {
-		return "", "", fmt.Errorf("invalid SHA format: expected 40 hex characters, got %d (%s)", len(sha), sha)
+		return "", "", fmt.Errorf("parse tag reference SHA format: invalid SHA format; got %d characters (%s) but expected 40 hex characters (example: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2')", len(sha), sha)
 	}
 	return sha, objType, nil
 }
@@ -204,12 +204,12 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 	ForceGHHostEnv(cmd, "github.com")
 	output, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve %s@%s: %w", repo, version, err)
+		return "", fmt.Errorf("resolve action reference %s@%s: %w; should verify network connection and make sure repository is accessible", repo, version, err)
 	}
 
 	sha, objType, err := ParseTagRefTSV(string(output))
 	if err != nil {
-		return "", fmt.Errorf("failed to parse API response for %s@%s: %w", repo, version, err)
+		return "", fmt.Errorf("decode action API response for %s@%s: %w; should expect valid JSON representation from GitHub API", repo, version, err)
 	}
 
 	// Annotated tags (and chained tag objects) point to a tag object rather than
@@ -219,7 +219,7 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 	const maxTagPeelDepth = 10
 	for depth := 0; objType == "tag"; depth++ {
 		if depth >= maxTagPeelDepth {
-			return "", fmt.Errorf("failed to resolve %s@%s: exceeded max tag peel depth %d", repo, version, maxTagPeelDepth)
+			return "", fmt.Errorf("resolve annotated tag for %s@%s: exceeded maximum tag peel depth %d; should verify if tag points to a valid commit", repo, version, maxTagPeelDepth)
 		}
 		resolverLog.Printf("Detected annotated tag for %s@%s (depth %d, tag object SHA: %s), peeling to underlying object", repo, version, depth, sha)
 		tagPath := fmt.Sprintf("/repos/%s/git/tags/%s", baseRepo, sha)
@@ -237,11 +237,11 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 			return peelErr
 		}()
 		if err != nil {
-			return "", fmt.Errorf("failed to peel annotated tag %s@%s: %w", repo, version, err)
+			return "", fmt.Errorf("peel annotated tag for %s@%s: %w; should verify GitHub API access and permissions", repo, version, err)
 		}
 		sha, objType, err = ParseTagRefTSV(string(output2))
 		if err != nil {
-			return "", fmt.Errorf("failed to parse peeled tag API response for %s@%s: %w", repo, version, err)
+			return "", fmt.Errorf("decode peeled tag API response for %s@%s: %w; should expect valid JSON from GitHub API", repo, version, err)
 		}
 	}
 	resolverLog.Printf("Resolved %s@%s to %s SHA: %s", repo, version, objType, sha)
