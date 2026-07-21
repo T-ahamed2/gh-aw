@@ -36,6 +36,16 @@ func FindClosestMatches(target string, candidates []string, maxResults int) []st
 			continue
 		}
 
+		// Performance optimization: skip candidates whose length differs by more
+		// than maxDistance. Since each insertion or deletion changes the length by 1,
+		// a length difference larger than maxDistance guarantees that the Levenshtein
+		// distance will exceed maxDistance. This $O(1)$ check avoids expensive
+		// $O(N \times M)$ Levenshtein calculations.
+		diff := len(targetLower) - len(candidateLower)
+		if diff < -maxDistance || diff > maxDistance {
+			continue
+		}
+
 		distance := LevenshteinDistance(targetLower, candidateLower)
 
 		// Only include if distance is within acceptable range
@@ -75,6 +85,12 @@ func FindClosestMatches(target string, candidates []string, maxResults int) []st
 // LevenshteinDistance computes the Levenshtein distance between two strings.
 // This is the minimum number of single-character edits (insertions, deletions, or substitutions)
 // required to change one string into the other.
+//
+// Performance Optimizations:
+//  1. Swaps strings if necessary to make 'b' the shorter string, reducing the DP space.
+//  2. Uses a single-row dynamic programming array instead of two rows to minimize space.
+//  3. Utilizes a stack-allocated '[65]int' buffer for inputs where the shorter string
+//     is <= 64 characters, completely eliminating heap allocations in 100% of typical cases.
 func LevenshteinDistance(a, b string) int {
 	aLen := len(a)
 	bLen := len(b)
@@ -87,41 +103,44 @@ func LevenshteinDistance(a, b string) int {
 		return aLen
 	}
 
-	// Create a 2D matrix for dynamic programming
-	// We only need the previous row, so we can optimize space
-	previousRow := make([]int, bLen+1)
-	currentRow := make([]int, bLen+1)
+	// Swap strings if needed so that b is always the shorter string.
+	// This reduces the space complexity of the DP table.
+	if aLen < bLen {
+		a, b = b, a
+		aLen, bLen = bLen, aLen
+	}
 
-	// Initialize the first row (distance from empty string)
-	for i := 0; i <= bLen; i++ {
-		previousRow[i] = i
+	// Use stack-allocated array for strings <= 64 characters to avoid heap allocations.
+	var arr [65]int
+	var dp []int
+	if bLen+1 <= len(arr) {
+		dp = arr[:bLen+1]
+	} else {
+		dp = make([]int, bLen+1)
+	}
+
+	// Initialize the row (distance from empty string)
+	for j := 0; j <= bLen; j++ {
+		dp[j] = j
 	}
 
 	// Calculate distances for each character in string a
 	for i := 1; i <= aLen; i++ {
-		currentRow[0] = i // Distance from empty string
+		prevDiagonal := dp[0] // represents dp[i-1][j-1]
+		dp[0] = i             // distance from empty string dp[i][0]
 
 		for j := 1; j <= bLen; j++ {
-			// Cost of substitution (0 if characters match, 1 otherwise)
+			temp := dp[j] // represents dp[i-1][j]
 			cost := 1
 			if a[i-1] == b[j-1] {
 				cost = 0
 			}
 
-			// Minimum of:
-			// - Deletion: previousRow[j] + 1
-			// - Insertion: currentRow[j-1] + 1
-			// - Substitution: previousRow[j-1] + cost
-			deletion := previousRow[j] + 1
-			insertion := currentRow[j-1] + 1
-			substitution := previousRow[j-1] + cost
-
-			currentRow[j] = min(deletion, min(insertion, substitution))
+			// Minimum of Deletion, Insertion, or Substitution
+			dp[j] = min(dp[j]+1, min(dp[j-1]+1, prevDiagonal+cost))
+			prevDiagonal = temp
 		}
-
-		// Swap rows for next iteration
-		previousRow, currentRow = currentRow, previousRow
 	}
 
-	return previousRow[bLen]
+	return dp[bLen]
 }
