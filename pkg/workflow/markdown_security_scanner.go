@@ -133,8 +133,8 @@ func stripFrontmatter(content string) (string, int) {
 		}
 	}
 
-	// No closing --- found; treat as frontmatter-only with no markdown body to scan
-	return "", 0
+	// No closing --- found; treat as no frontmatter, entire content is markdown body to scan
+	return content, 0
 }
 
 // FormatSecurityFindings formats a list of findings into a human-readable error message
