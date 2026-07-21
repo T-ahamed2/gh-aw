@@ -771,7 +771,7 @@ func TestStripFrontmatter(t *testing.T) {
 		{
 			name:           "unclosed frontmatter",
 			content:        "---\nengine: copilot\n# Hello",
-			expectedBody:   "",
+			expectedBody:   "---\nengine: copilot\n# Hello",
 			expectedOffset: 0,
 		},
 		{
@@ -925,4 +925,21 @@ func TestScanMarkdownSecurity_RealisticAttack_ClickjackingForm(t *testing.T) {
 `
 	findings := ScanMarkdownSecurity(content)
 	require.GreaterOrEqual(t, len(findings), 1, "should detect form tag attack")
+}
+
+func TestScanMarkdownSecurity_UnclosedFrontmatter_Attack(t *testing.T) {
+	// A file with an unclosed frontmatter block that includes a malicious payload (e.g. script tag)
+	// should still be scanned and rejected by the security scanner.
+	content := "---\nengine: copilot\n<script>alert('malicious')</script>"
+	findings := ScanMarkdownSecurity(content)
+	require.NotEmpty(t, findings, "should detect script tag inside unclosed frontmatter")
+
+	hasHTMLAbuse := false
+	for _, f := range findings {
+		if f.Category == CategoryHTMLAbuse {
+			hasHTMLAbuse = true
+			break
+		}
+	}
+	assert.True(t, hasHTMLAbuse, "should flag the finding as HTML abuse")
 }
