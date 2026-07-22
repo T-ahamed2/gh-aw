@@ -131,19 +131,27 @@ func extractFrontmatterMetadata(frontmatterYAML string, frontmatterStart int) ([
 		relLine++
 		lines = append(lines, line)
 
+		// Fast-path skip for empty, indented, comment, or carriage return lines
+		// This avoids calling expensive strings.TrimSpace on nested YAML content
+		if line == "" {
+			continue
+		}
+		firstChar := line[0]
+		if firstChar == ' ' || firstChar == '\t' || firstChar == '#' || firstChar == '\r' || firstChar == '\n' {
+			continue
+		}
+
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 
-		if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
-			colonIdx := strings.IndexByte(trimmed, ':')
-			if colonIdx > 0 {
-				key := strings.TrimSpace(trimmed[:colonIdx])
-				if key != "" && !strings.ContainsAny(key, " \t{}[]\"'") {
-					if _, alreadySeen := fieldLines[key]; !alreadySeen {
-						fieldLines[key] = relLine + frontmatterStart - 1
-					}
+		colonIdx := strings.IndexByte(trimmed, ':')
+		if colonIdx > 0 {
+			key := strings.TrimSpace(trimmed[:colonIdx])
+			if key != "" && !strings.ContainsAny(key, " \t{}[]\"'") {
+				if _, alreadySeen := fieldLines[key]; !alreadySeen {
+					fieldLines[key] = relLine + frontmatterStart - 1
 				}
 			}
 		}
@@ -208,6 +216,11 @@ leftTrimmed:
 rightTrimmed:
 	if end-start == 3 && line[start] == '-' && line[start+1] == '-' && line[start+2] == '-' {
 		return true
+	}
+
+	// Fast path: if the ASCII-trimmed length is less than 3, it can never be "---" after any further trimming.
+	if end-start < 3 {
+		return false
 	}
 
 	// Fallback keeps previous behavior for uncommon Unicode whitespace.
@@ -368,7 +381,7 @@ func generateDefaultWorkflowName(filePath string) string {
 	// Capitalize first letter of each word
 	words := strings.Fields(baseName)
 	for i, word := range words {
-		if len(word) > 0 {
+		if word != "" {
 			words[i] = strings.ToUpper(word[:1]) + word[1:]
 		}
 	}
