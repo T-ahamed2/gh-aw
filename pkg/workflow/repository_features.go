@@ -167,12 +167,12 @@ func getCurrentRepositoryUncached() (string, error) {
 	// This works when in a git repository with GitHub remote and respects GH_REPO
 	repo, err := repository.Current()
 	if err != nil {
-		return "", fmt.Errorf("failed to get current repository: %w", err)
+		return "", fmt.Errorf("retrieve current repository: %w; should check the git context", err)
 	}
 
 	// Validate that owner and name are not empty
 	if repo.Owner == "" || repo.Name == "" {
-		return "", fmt.Errorf("repository owner or name is empty (owner: %q, name: %q)", repo.Owner, repo.Name)
+		return "", fmt.Errorf("repository owner or name is empty (owner: %q, name: %q); requires a valid git remote", repo.Owner, repo.Name)
 	}
 
 	repoName := fmt.Sprintf("%s/%s", repo.Owner, repo.Name)
@@ -187,7 +187,7 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 		features, ok := cached.(*RepositoryFeatures)
 		if !ok {
 			repositoryFeaturesCache.Delete(repo)
-			return nil, fmt.Errorf("invalid repository feature cache entry for %s: expected *RepositoryFeatures, got %T", repo, cached)
+			return nil, fmt.Errorf("unexpected repository feature cache entry for %s: requires *RepositoryFeatures type, got %T", repo, cached)
 		}
 		repositoryFeaturesLog.Printf("Using cached repository features for: %s", repo)
 		return features, nil
@@ -201,14 +201,14 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	// Check discussions
 	hasDiscussions, err := checkRepositoryHasDiscussionsUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check discussions: %w", err)
+		return nil, fmt.Errorf("query repository discussions status: %w; should check connection or token scopes", err)
 	}
 	features.HasDiscussions = hasDiscussions
 
 	// Check issues
 	hasIssues, err := checkRepositoryHasIssuesUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check issues: %w", err)
+		return nil, fmt.Errorf("query repository issues status: %w; should check API scopes", err)
 	}
 	features.HasIssues = hasIssues
 
@@ -218,7 +218,7 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	actualFeatures, ok := actual.(*RepositoryFeatures)
 	if !ok {
 		repositoryFeaturesCache.Delete(repo)
-		return nil, fmt.Errorf("invalid repository feature cache entry for %s: expected *RepositoryFeatures, got %T", repo, actual)
+		return nil, fmt.Errorf("unexpected repository feature cache entry type for %s: requires *RepositoryFeatures, got %T", repo, actual)
 	}
 
 	repositoryFeaturesLog.Printf("Cached repository features for: %s (discussions: %v, issues: %v)", repo, actualFeatures.HasDiscussions, actualFeatures.HasIssues)
@@ -281,12 +281,12 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	stdOut, _, err := gh.Exec("api", "graphql", "-f", "query="+query,
 		"-f", "owner="+owner, "-f", "name="+name)
 	if err != nil {
-		return false, fmt.Errorf("failed to query discussions status: %w", err)
+		return false, fmt.Errorf("request discussions status: %w; should verify GraphQL permission", err)
 	}
 
 	var response GraphQLResponse
 	if err := json.Unmarshal(stdOut.Bytes(), &response); err != nil {
-		return false, fmt.Errorf("failed to parse GraphQL response: %w", err)
+		return false, fmt.Errorf("parse GraphQL response: %w; should verify payload structure", err)
 	}
 
 	return response.Data.Repository.HasDiscussionsEnabled, nil
@@ -312,14 +312,14 @@ func checkRepositoryHasIssuesUncached(repo string) (bool, error) {
 	// Create REST client
 	client, err := api.DefaultRESTClient()
 	if err != nil {
-		return false, fmt.Errorf("failed to create REST client: %w", err)
+		return false, fmt.Errorf("initialize default REST client: %w; requires valid GitHub environment", err)
 	}
 
 	// Fetch repository data using REST client
 	var response RepositoryResponse
 	err = client.Get("repos/"+repo, &response)
 	if err != nil {
-		return false, fmt.Errorf("failed to query repository: %w", err)
+		return false, fmt.Errorf("request repository settings: %w; should verify API endpoint accessibility", err)
 	}
 
 	return response.HasIssues, nil
