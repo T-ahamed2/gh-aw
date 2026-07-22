@@ -1,0 +1,1 @@
+# Keep reports directory in git so that the markdown link check action doesn't fail
