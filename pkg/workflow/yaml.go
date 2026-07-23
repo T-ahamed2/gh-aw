@@ -114,19 +114,19 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 	cleanPath := filepath.Clean(workflowPath)
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve workflow path %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("resolve workflow path %s: %w; should check if path is valid", workflowPath, err)
 	}
 
 	content, err := os.ReadFile(absPath) // #nosec G304 -- Caller provides trusted path, and path is normalized/absolute-resolved above
 	if err != nil {
 		yamlLog.Printf("Failed to read workflow file %s: %v", workflowPath, err)
-		return nil, fmt.Errorf("failed to read workflow file %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("read workflow file %s: %w; should check file permissions and existence", workflowPath, err)
 	}
 
 	var workflow map[string]any
 	if err := yaml.Unmarshal(content, &workflow); err != nil {
 		yamlLog.Printf("Failed to parse workflow file %s: %v", workflowPath, err)
-		return nil, fmt.Errorf("failed to parse workflow file %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("parse workflow file %s: %w; requires valid YAML format", workflowPath, err)
 	}
 
 	yamlLog.Printf("Read workflow YAML: %s (%d bytes, %d top-level keys)", workflowPath, len(content), len(workflow))
@@ -163,27 +163,52 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 func UnquoteYAMLKey(yamlStr string, key string) string {
 	yamlLog.Printf("Unquoting YAML key: %s", key)
 
-	// Create a regex pattern that matches the quoted key at the start of a line
-	// Pattern: (start of line or newline) + (optional whitespace) + quoted key + colon
-	pattern := `(^|\n)([ \t]*)"` + regexp.QuoteMeta(key) + `":`
-
-	// Use cached compiled regex to avoid recompiling on every call
-	var re *regexp.Regexp
-	if cached, ok := unquoteYAMLKeyCache.Load(key); ok {
-		var typeOK bool
-		re, typeOK = cached.(*regexp.Regexp)
-		if !typeOK {
-			unquoteYAMLKeyCache.Delete(key)
-			re = regexp.MustCompile(pattern)
-			unquoteYAMLKeyCache.Store(key, re)
-		}
-	} else {
-		re = regexp.MustCompile(pattern)
-		unquoteYAMLKeyCache.Store(key, re)
+	target := `"` + key + `":`
+	if !strings.Contains(yamlStr, target) {
+		return yamlStr
 	}
-	// Use ReplaceAllString with capture group references for a single-pass replacement.
-	// ${1} = line start (^ or \n), ${2} = optional whitespace
-	return re.ReplaceAllString(yamlStr, "${1}${2}"+key+":")
+
+	var builder strings.Builder
+	builder.Grow(len(yamlStr))
+
+	start := 0
+	targetLen := len(target)
+
+	for {
+		idx := strings.Index(yamlStr[start:], target)
+		if idx == -1 {
+			builder.WriteString(yamlStr[start:])
+			break
+		}
+
+		matchIdx := start + idx
+		// Check preceding characters on the same line
+		isValid := true
+		for i := matchIdx - 1; i >= 0; i-- {
+			ch := yamlStr[i]
+			if ch == '\n' {
+				break
+			}
+			if ch != ' ' && ch != '\t' {
+				isValid = false
+				break
+			}
+		}
+
+		if isValid {
+			// Write everything up to the matchIdx
+			builder.WriteString(yamlStr[start:matchIdx])
+			// Write the unquoted key followed by colon
+			builder.WriteString(key)
+			builder.WriteByte(':')
+		} else {
+			// Write everything up to matchIdx + targetLen
+			builder.WriteString(yamlStr[start : matchIdx+targetLen])
+		}
+		start = matchIdx + targetLen
+	}
+
+	return builder.String()
 }
 
 // UnquoteYAMLTopLevelKey removes quotes from a YAML key only when it appears
