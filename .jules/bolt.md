@@ -1,0 +1,3 @@
+## 2026-07-24 - Zero-Allocation Fast-Path URL Domain Extraction
+**Learning:** In Go, passing arguments to variadic functions like logger `Printf` triggers slice allocation (usually 16 bytes for single argument on the heap) even if the logger is disabled. Explicitly wrapping these in `if logger.Enabled()` checks completely eliminates these allocations. Additionally, using standard library's `net/url.Parse` for standard http/https URLs incurs massive parsing and allocation overhead when only the domain name is needed.
+**Action:** Always wrap debug log statements in performance-critical hot paths with `if logger.Enabled()` checks, and provide lightweight string-scanning fast-paths for common formats (e.g., standard http/https prefixes) to bypass expensive parsing.
