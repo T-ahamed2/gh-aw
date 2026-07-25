@@ -223,21 +223,27 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 		}
 		resolverLog.Printf("Detected annotated tag for %s@%s (depth %d, tag object SHA: %s), peeling to underlying object", repo, version, depth, sha)
 		tagPath := fmt.Sprintf("/repos/%s/git/tags/%s", baseRepo, sha)
-		// Each peel gets its own fresh 30-second timeout derived from the original
-		// caller context (ctx), not from callCtx, so we don't accidentally shrink
-		// the budget for subsequent peels.
-		peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
-		cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
-		ForceGHHostEnv(cmd2, "github.com")
-		output2, peelErr := cmd2.Output()
-		peelCancel()
+
+		// Wrap in a closure to safely defer peelCancel without triggering defer-in-loop or contextcancelnotdeferred linter errors.
+		nextSha, nextType, peelErr := func() (string, string, error) {
+			peelCtx, peelCancel := context.WithTimeout(ctx, 30*time.Second)
+			defer peelCancel()
+			cmd2 := ExecGHContext(peelCtx, "api", tagPath, "--jq", "[.object.sha, .object.type] | @tsv")
+			ForceGHHostEnv(cmd2, "github.com")
+			output2, err := cmd2.Output()
+			if err != nil {
+				return "", "", fmt.Errorf("peel annotated tag %s@%s: %w; should verify connectivity and authentication scopes", repo, version, err)
+			}
+			s, oType, parseErr := ParseTagRefTSV(string(output2))
+			if parseErr != nil {
+				return "", "", fmt.Errorf("parse peeled tag API response for %s@%s: %w; requires a valid TSV response", repo, version, parseErr)
+			}
+			return s, oType, nil
+		}()
 		if peelErr != nil {
-			return "", fmt.Errorf("failed to peel annotated tag %s@%s: %w", repo, version, peelErr)
+			return "", peelErr
 		}
-		sha, objType, err = ParseTagRefTSV(string(output2))
-		if err != nil {
-			return "", fmt.Errorf("failed to parse peeled tag API response for %s@%s: %w", repo, version, err)
-		}
+		sha, objType = nextSha, nextType
 	}
 	resolverLog.Printf("Resolved %s@%s to %s SHA: %s", repo, version, objType, sha)
 
