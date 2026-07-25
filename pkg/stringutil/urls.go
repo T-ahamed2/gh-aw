@@ -39,14 +39,39 @@ func NormalizeGitHubHostURL(rawHostURL string) string {
 //	ExtractDomainFromURL("http://sub.domain.com:8080/path")       // returns "sub.domain.com"
 //	ExtractDomainFromURL("localhost:8080")                        // returns "localhost"
 func ExtractDomainFromURL(urlStr string) string {
-	urlsLog.Printf("Extracting domain from URL: %s", urlStr)
-	// Handle full URLs with protocols (http://, https://)
-	if strings.HasPrefix(urlStr, "http://") || strings.HasPrefix(urlStr, "https://") {
-		// Parse full URL
+	if urlsLog.Enabled() {
+		urlsLog.Printf("Extracting domain from URL: %s", urlStr)
+	}
+
+	// High-performance fast-path for standard http:// and https:// URLs.
+	// This avoids net/url.Parse and results in zero heap allocations.
+	var rem string
+	var hasScheme bool
+	if strings.HasPrefix(urlStr, "https://") {
+		rem = urlStr[8:]
+		hasScheme = true
+	} else if strings.HasPrefix(urlStr, "http://") {
+		rem = urlStr[7:]
+		hasScheme = true
+	}
+
+	if hasScheme {
+		// If there is userinfo (contains @) or IPv6 address (contains [), fall back to net/url.Parse.
+		if !strings.Contains(rem, "@") && !strings.Contains(rem, "[") {
+			// Find the first delimiter that signals the end of the host/port part.
+			if idx := strings.IndexAny(rem, "/?#:"); idx != -1 {
+				return rem[:idx]
+			}
+			return rem
+		}
+
+		// Parse full URL for complex formats (userinfo, IPv6)
 		parsedURL, err := url.Parse(urlStr)
 		if err != nil {
 			// Fall back to string manipulation if parsing fails
-			urlsLog.Printf("URL parse failed, using fallback: %v", err)
+			if urlsLog.Enabled() {
+				urlsLog.Printf("URL parse failed, using fallback: %v", err)
+			}
 			return extractDomainFallback(urlStr)
 		}
 		return parsedURL.Hostname()
