@@ -128,7 +128,7 @@ func parseActionUsesField(uses string) (*actionRef, error) {
 	// External action: split on "@" to get ref
 	atIdx := strings.LastIndex(uses, "@")
 	if atIdx < 0 {
-		return nil, fmt.Errorf("invalid action ref %q: missing @ref suffix", uses)
+		return nil, fmt.Errorf("parse action ref %q: requires a valid @ref suffix; should check reference syntax. Example: actions/checkout@v4", uses)
 	}
 
 	refStr := uses[atIdx+1:]
@@ -353,7 +353,7 @@ func readLocalActionYAML(localPath, markdownPath string) (*actionYAMLFile, error
 func parseActionYAMLContent(content []byte) (*actionYAMLFile, error) {
 	var parsed actionYAMLFile
 	if err := yaml.Unmarshal(content, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse action YAML: %w", err)
+		return nil, fmt.Errorf("unmarshal action YAML: %w; requires a valid YAML format with expected action keys", err)
 	}
 	return &parsed, nil
 }

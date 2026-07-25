@@ -101,7 +101,7 @@ func (r *ActionResolver) ResolveSHA(ctx context.Context, repo, version string) (
 	// Check if we've already failed to resolve this action in this run
 	if r.failedResolutions[cacheKey] {
 		resolverLog.Printf("Skipping resolution for %s@%s: already failed in this run", repo, version)
-		return "", fmt.Errorf("resolution history indicates previous failure for %s@%s; should check configuration or connectivity in this run", repo, version)
+		return "", fmt.Errorf("previously failed to resolve %s@%s in this compilation run; should check configuration or connectivity", repo, version)
 	}
 
 	// Check cache first using the pre-computed key to avoid a second key allocation.
@@ -169,12 +169,12 @@ func ParseTagRefTSV(line string) (sha, objType string, err error) {
 	line = strings.TrimSpace(line)
 	parts := strings.SplitN(line, "\t", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("parse tag output line %q: requires tab-separated SHA and object type; should verify input format", line)
+		return "", "", fmt.Errorf("unexpected format in line %q: requires tab-separated SHA and object type; should verify input format", line)
 	}
 	sha = parts[0]
 	objType = parts[1]
 	if len(sha) != 40 || !gitutil.IsHexString(sha) {
-		return "", "", fmt.Errorf("verify commit SHA %q: invalid format; expected exactly 40 hex characters, got length %d", sha, len(sha))
+		return "", "", fmt.Errorf("invalid SHA format for %q: expected exactly 40 hex characters, got length %d", sha, len(sha))
 	}
 	return sha, objType, nil
 }
