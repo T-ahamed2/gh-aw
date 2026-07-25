@@ -1,6 +1,6 @@
 ---
 emoji: 🔄
-description: Daily documentation synchronization workflow to keep docs in sync with code changes
+description: Daily documentation synchronization workflow to keep repository docs in sync with recent code changes
 on:
   schedule: daily
   workflow_dispatch:
