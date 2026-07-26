@@ -92,7 +92,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/goccy/go-yaml"
@@ -103,9 +102,6 @@ var yamlLog = logger.New("workflow:yaml")
 // yamlNullPattern matches `: null` at the end of a line (pre-compiled for performance)
 var yamlNullPattern = regexp.MustCompile(`:\s*null\s*$`)
 
-// unquoteYAMLKeyCache caches compiled regexes for UnquoteYAMLKey by key name
-var unquoteYAMLKeyCache sync.Map
-
 // readWorkflowYAML reads and parses a trusted workflow YAML file path.
 // The caller is responsible for repository-boundary validation (for example via
 // findWorkflowFile/isPathWithinDir) before passing workflowPath.
@@ -114,19 +110,19 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 	cleanPath := filepath.Clean(workflowPath)
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve workflow path %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("resolve workflow path %s: %w; should verify path conforms to valid format and exists", workflowPath, err)
 	}
 
 	content, err := os.ReadFile(absPath) // #nosec G304 -- Caller provides trusted path, and path is normalized/absolute-resolved above
 	if err != nil {
 		yamlLog.Printf("Failed to read workflow file %s: %v", workflowPath, err)
-		return nil, fmt.Errorf("failed to read workflow file %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("read workflow file %s: %w; should verify file is readable and has expected permissions", workflowPath, err)
 	}
 
 	var workflow map[string]any
 	if err := yaml.Unmarshal(content, &workflow); err != nil {
 		yamlLog.Printf("Failed to parse workflow file %s: %v", workflowPath, err)
-		return nil, fmt.Errorf("failed to parse workflow file %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("parse workflow file %s: %w; should verify valid YAML content structure and types", workflowPath, err)
 	}
 
 	yamlLog.Printf("Read workflow YAML: %s (%d bytes, %d top-level keys)", workflowPath, len(content), len(workflow))
@@ -163,27 +159,64 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 func UnquoteYAMLKey(yamlStr string, key string) string {
 	yamlLog.Printf("Unquoting YAML key: %s", key)
 
-	// Create a regex pattern that matches the quoted key at the start of a line
-	// Pattern: (start of line or newline) + (optional whitespace) + quoted key + colon
-	pattern := `(^|\n)([ \t]*)"` + regexp.QuoteMeta(key) + `":`
-
-	// Use cached compiled regex to avoid recompiling on every call
-	var re *regexp.Regexp
-	if cached, ok := unquoteYAMLKeyCache.Load(key); ok {
-		var typeOK bool
-		re, typeOK = cached.(*regexp.Regexp)
-		if !typeOK {
-			unquoteYAMLKeyCache.Delete(key)
-			re = regexp.MustCompile(pattern)
-			unquoteYAMLKeyCache.Store(key, re)
-		}
-	} else {
-		re = regexp.MustCompile(pattern)
-		unquoteYAMLKeyCache.Store(key, re)
+	if key == "" {
+		return yamlStr
 	}
-	// Use ReplaceAllString with capture group references for a single-pass replacement.
-	// ${1} = line start (^ or \n), ${2} = optional whitespace
-	return re.ReplaceAllString(yamlStr, "${1}${2}"+key+":")
+
+	// Fast-path: Check if the quoted key target even exists in the YAML string.
+	// This avoids string builder allocations and loop scanning completely.
+	target := `"` + key + `":`
+	if !strings.Contains(yamlStr, target) {
+		return yamlStr
+	}
+
+	// Loop-based scanning to replace the quoted key only at the start of a line
+	// (optionally preceded by spaces or tabs).
+	var sb strings.Builder
+	sb.Grow(len(yamlStr))
+
+	current := yamlStr
+	replacement := key + ":"
+
+	for {
+		idx := strings.Index(current, target)
+		if idx == -1 {
+			sb.WriteString(current)
+			break
+		}
+
+		// Check if this occurrence is at the start of a line.
+		// It must only be preceded by whitespace (spaces or tabs) since the last newline
+		// (or since the start of the string if no newline exists before).
+		isStartOfLine := true
+		lastNL := strings.LastIndex(current[:idx], "\n")
+		startIdx := 0
+		if lastNL != -1 {
+			startIdx = lastNL + 1
+		}
+
+		// Inspect all characters between the start of the line and the matched target.
+		for i := startIdx; i < idx; i++ {
+			if current[i] != ' ' && current[i] != '\t' {
+				isStartOfLine = false
+				break
+			}
+		}
+
+		if isStartOfLine {
+			// Write the prefix leading up to the target, followed by the unquoted replacement.
+			sb.WriteString(current[:idx])
+			sb.WriteString(replacement)
+		} else {
+			// Write the prefix and keep the target quoted.
+			sb.WriteString(current[:idx+len(target)])
+		}
+
+		// Advance past the processed section.
+		current = current[idx+len(target):]
+	}
+
+	return sb.String()
 }
 
 // UnquoteYAMLTopLevelKey removes quotes from a YAML key only when it appears
