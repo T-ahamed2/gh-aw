@@ -91,8 +91,10 @@ func cleanOneOfMessage(message string) string {
 		return message
 	}
 
-	schemaErrorsLog.Printf("Simplifying oneOf error message (%d lines)", len(strings.Split(message, "\n")))
 	lines := strings.Split(message, "\n")
+	if schemaErrorsLog.Enabled() {
+		schemaErrorsLog.Printf("Simplifying oneOf error message (%d lines)", len(lines))
+	}
 	var meaningful []string
 
 	for _, line := range lines {
