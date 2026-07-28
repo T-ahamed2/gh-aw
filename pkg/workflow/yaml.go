@@ -110,23 +110,29 @@ var unquoteYAMLKeyCache sync.Map
 // The caller is responsible for repository-boundary validation (for example via
 // findWorkflowFile/isPathWithinDir) before passing workflowPath.
 func readWorkflowYAML(workflowPath string) (map[string]any, error) {
-	yamlLog.Printf("Reading workflow YAML: %s", workflowPath)
+	if yamlLog.Enabled() {
+		yamlLog.Printf("Reading workflow YAML: %s", workflowPath)
+	}
 	cleanPath := filepath.Clean(workflowPath)
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve workflow path %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("failed to resolve workflow path %s: %w; should verify path correctness and structure", workflowPath, err)
 	}
 
 	content, err := os.ReadFile(absPath) // #nosec G304 -- Caller provides trusted path, and path is normalized/absolute-resolved above
 	if err != nil {
-		yamlLog.Printf("Failed to read workflow file %s: %v", workflowPath, err)
-		return nil, fmt.Errorf("failed to read workflow file %s: %w", workflowPath, err)
+		if yamlLog.Enabled() {
+			yamlLog.Printf("Failed to read workflow file %s: %v", workflowPath, err)
+		}
+		return nil, fmt.Errorf("failed to read workflow file %s: %w; should ensure the target file exists and is readable", workflowPath, err)
 	}
 
 	var workflow map[string]any
 	if err := yaml.Unmarshal(content, &workflow); err != nil {
-		yamlLog.Printf("Failed to parse workflow file %s: %v", workflowPath, err)
-		return nil, fmt.Errorf("failed to parse workflow file %s: %w", workflowPath, err)
+		if yamlLog.Enabled() {
+			yamlLog.Printf("Failed to parse workflow file %s: %v", workflowPath, err)
+		}
+		return nil, fmt.Errorf("failed to parse workflow file %s: %w; expected valid YAML formatting", workflowPath, err)
 	}
 
 	yamlLog.Printf("Read workflow YAML: %s (%d bytes, %d top-level keys)", workflowPath, len(content), len(workflow))
