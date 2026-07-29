@@ -70,7 +70,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp directory: %w", err)
+		return "", fmt.Errorf("create temporary directory: %w; should check disk space and permissions", err)
 	}
 
 	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
@@ -80,7 +80,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 			remoteLog.Printf("Failed to clean up temp directory %q: %v", tmpDir, cleanupErr)
 		}
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return "", fmt.Errorf("failed to clone repository for %s/%s@%s: %w", owner, repo, ref, err)
+		return "", fmt.Errorf("clone repository for %s/%s@%s: %w; should check repository connection and ensure a valid ref is used", owner, repo, ref, err)
 	}
 
 	existingDir, found := func() (string, bool) {
@@ -261,7 +261,7 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if stripped, ok := strings.CutPrefix(filepath.ToSlash(filePath), "/"); ok {
 		if !strings.HasPrefix(stripped, constants.GithubDir) && !strings.HasPrefix(stripped, ".agents/") {
 			remoteLog.Printf("Security: Path not within .github or .agents: %s", filePath)
-			return "", fmt.Errorf("security: path %s must be within .github or .agents folder", filePath)
+			return "", fmt.Errorf("security: path %s is expected to be within %s or .agents folder; should check valid path prefix", filePath, constants.GithubDir)
 		}
 	}
 	fullPath := filepath.Join(resolveBase, filePath)
@@ -271,13 +271,13 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if err != nil || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) || filepath.IsAbs(relativePath) {
 		allowedFolder := filepath.Base(normalizedSecurityBase)
 		remoteLog.Printf("Security: Path escapes allowed folder: %s (resolves to: %s)", filePath, relativePath)
-		return "", fmt.Errorf("security: path %s must be within %s folder (resolves to: %s)", filePath, allowedFolder, relativePath)
+		return "", fmt.Errorf("security: path %s is expected to be within %s folder (resolves to: %s); should not escape allowed directory", filePath, allowedFolder, relativePath)
 	}
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		remoteLog.Printf("Local file not found: %s", fullPath)
 		// Return a simple error that will be wrapped with source location by the caller
-		return "", fmt.Errorf("file not found: %s", fullPath)
+		return "", fmt.Errorf("file %s is not found; expected a valid local file path", fullPath)
 	}
 	remoteLog.Printf("Resolved to local file: %s", fullPath)
 	return fullPath, nil
@@ -359,7 +359,7 @@ func downloadIncludeFromWorkflowSpec(spec string, cache *ImportCache) (string, e
 	remoteLog.Printf("Fetching file from GitHub: %s/%s/%s@%s", owner, repo, filePath, ref)
 	content, err := downloadFileFromGitHub(owner, repo, filePath, ref)
 	if err != nil {
-		return "", fmt.Errorf("failed to download include from %s: %w", spec, err)
+		return "", fmt.Errorf("download include from %s: %w; should check network connection and expect a valid spec", spec, err)
 	}
 	remoteLog.Printf("Successfully downloaded file: size=%d bytes", len(content))
 
@@ -391,7 +391,7 @@ func parseWorkflowSpecParts(spec string) (string, string, string, string, error)
 	slashParts := strings.Split(pathPart, "/")
 	if len(slashParts) < 3 {
 		remoteLog.Printf("Invalid workflowspec format: %s", spec)
-		return "", "", "", "", errors.New("invalid workflowspec: must be owner/repo/path[@ref]")
+		return "", "", "", "", fmt.Errorf("workflowspec %q is not in the valid expected format; should be owner/repo/path[@ref]", spec)
 	}
 	return slashParts[0], slashParts[1], strings.Join(slashParts[2:], "/"), ref, nil
 }
@@ -411,7 +411,7 @@ func resolveWorkflowSpecSHAForCache(owner, repo, ref string, cache *ImportCache)
 func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 	tempFile, err := os.CreateTemp("", "gh-aw-include-*.md")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %w", err)
+		return "", fmt.Errorf("create temporary file: %w; should check write permissions and expect a valid temporary directory", err)
 	}
 	cleanupOnError := true
 	fileClosed := false
