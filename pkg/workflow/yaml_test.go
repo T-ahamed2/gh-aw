@@ -107,7 +107,7 @@ jobs:
       run: echo hello
 `
 	b.ReportAllocs()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		_ = CleanYAMLNullValues(yamlStr)
 	}
 }
@@ -551,7 +551,7 @@ jobs:
       run: echo hello
 `
 	b.ReportAllocs()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		_ = UnquoteYAMLKey(yamlStr, "on")
 	}
 }
