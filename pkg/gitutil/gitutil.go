@@ -108,7 +108,7 @@ func FindGitRoot() (string, error) {
 func FindGitRootFrom(startDir string) (string, error) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve absolute path for %q: %w", startDir, err)
+		return "", fmt.Errorf("resolve absolute path for %q: %w; should specify a valid path structure", startDir, err)
 	}
 	dir = filepath.Clean(dir)
 	for {
@@ -124,7 +124,7 @@ func FindGitRootFrom(startDir string) (string, error) {
 			if info.Mode().IsRegular() {
 				data, readErr := os.ReadFile(gitPath)
 				if readErr != nil {
-					return "", fmt.Errorf("failed to read .git file at %q: %w", gitPath, readErr)
+					return "", fmt.Errorf("read .git file at %q: %w; requires a valid git file expected with proper read permissions", gitPath, readErr)
 				}
 				if strings.HasPrefix(strings.TrimSpace(string(data)), "gitdir:") {
 					return dir, nil
@@ -132,7 +132,7 @@ func FindGitRootFrom(startDir string) (string, error) {
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
 			// Unexpected error (e.g. permission denied) — surface it.
-			return "", fmt.Errorf("failed to stat %q: %w", gitPath, err)
+			return "", fmt.Errorf("query stats for %q: %w; should verify a valid .git path exists with correct permissions", gitPath, err)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -149,19 +149,19 @@ func FindGitRootFrom(startDir string) (string, error) {
 // Use this when the caller already knows the git root (e.g. from a cached value).
 func ReadFileFromHEAD(filePath, gitRoot string) (string, error) {
 	if gitRoot == "" {
-		return "", fmt.Errorf("gitRoot must not be empty when reading %q from HEAD", filePath)
+		return "", fmt.Errorf("gitRoot is empty when reading %q from HEAD; should specify a valid git root directory", filePath)
 	}
 
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
-		return "", fmt.Errorf("cannot resolve absolute path for %q: %w", filePath, err)
+		return "", fmt.Errorf("resolve absolute path for %q: %w; should specify a valid absolute path format", filePath, err)
 	}
 
 	// git show requires the path to be relative to the repository root and to use
 	// forward slashes even on Windows.
 	relPath, err := filepath.Rel(gitRoot, absPath)
 	if err != nil {
-		return "", fmt.Errorf("cannot compute path of %q relative to git root %q: %w", absPath, gitRoot, err)
+		return "", fmt.Errorf("compute path of %q relative to git root %q: %w; should verify a valid git repository layout", absPath, gitRoot, err)
 	}
 
 	// Reject paths that escape the repository (e.g. "../secret").
@@ -180,4 +180,12 @@ func ReadFileFromHEAD(filePath, gitRoot string) (string, error) {
 		return "", fmt.Errorf("file %q not found in HEAD commit: %w", filePath, err)
 	}
 	return string(output), nil
+}
+
+// ValidateGitArg rejects arguments starting with a hyphen to prevent flag injection.
+func ValidateGitArg(arg string) error {
+	if strings.HasPrefix(arg, "-") {
+		return fmt.Errorf("git argument %q starting with '-' is invalid; should provide a valid ref or path expected without leading hyphens", arg)
+	}
+	return nil
 }
