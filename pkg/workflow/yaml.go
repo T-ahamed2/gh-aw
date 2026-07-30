@@ -87,24 +87,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/goccy/go-yaml"
 )
 
 var yamlLog = logger.New("workflow:yaml")
-
-// yamlNullPattern matches `: null` at the end of a line (pre-compiled for performance)
-var yamlNullPattern = regexp.MustCompile(`:\s*null\s*$`)
-
-// unquoteYAMLKeyCache caches compiled regexes for UnquoteYAMLKey by key name
-var unquoteYAMLKeyCache sync.Map
 
 // readWorkflowYAML reads and parses a trusted workflow YAML file path.
 // The caller is responsible for repository-boundary validation (for example via
@@ -114,19 +106,19 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 	cleanPath := filepath.Clean(workflowPath)
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve workflow path %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("failed to resolve workflow path %s: %w; expected path to exist", workflowPath, err)
 	}
 
 	content, err := os.ReadFile(absPath) // #nosec G304 -- Caller provides trusted path, and path is normalized/absolute-resolved above
 	if err != nil {
 		yamlLog.Printf("Failed to read workflow file %s: %v", workflowPath, err)
-		return nil, fmt.Errorf("failed to read workflow file %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("failed to read workflow file %s: %w; should check permissions", workflowPath, err)
 	}
 
 	var workflow map[string]any
 	if err := yaml.Unmarshal(content, &workflow); err != nil {
 		yamlLog.Printf("Failed to parse workflow file %s: %v", workflowPath, err)
-		return nil, fmt.Errorf("failed to parse workflow file %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("failed to parse workflow file %s: %w; should ensure valid YAML formatting", workflowPath, err)
 	}
 
 	yamlLog.Printf("Read workflow YAML: %s (%d bytes, %d top-level keys)", workflowPath, len(content), len(workflow))
@@ -161,29 +153,56 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 //	result := UnquoteYAMLKey(input, "on")
 //	// result: "on:\n  push:\n    branches:\n      - main"
 func UnquoteYAMLKey(yamlStr string, key string) string {
-	yamlLog.Printf("Unquoting YAML key: %s", key)
-
-	// Create a regex pattern that matches the quoted key at the start of a line
-	// Pattern: (start of line or newline) + (optional whitespace) + quoted key + colon
-	pattern := `(^|\n)([ \t]*)"` + regexp.QuoteMeta(key) + `":`
-
-	// Use cached compiled regex to avoid recompiling on every call
-	var re *regexp.Regexp
-	if cached, ok := unquoteYAMLKeyCache.Load(key); ok {
-		var typeOK bool
-		re, typeOK = cached.(*regexp.Regexp)
-		if !typeOK {
-			unquoteYAMLKeyCache.Delete(key)
-			re = regexp.MustCompile(pattern)
-			unquoteYAMLKeyCache.Store(key, re)
-		}
-	} else {
-		re = regexp.MustCompile(pattern)
-		unquoteYAMLKeyCache.Store(key, re)
+	target := `"` + key + `":`
+	if !strings.Contains(yamlStr, target) {
+		return yamlStr
 	}
-	// Use ReplaceAllString with capture group references for a single-pass replacement.
-	// ${1} = line start (^ or \n), ${2} = optional whitespace
-	return re.ReplaceAllString(yamlStr, "${1}${2}"+key+":")
+
+	if yamlLog.Enabled() {
+		yamlLog.Printf("Unquoting YAML key: %s", key)
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(yamlStr))
+
+	start := 0
+	for {
+		idx := strings.Index(yamlStr[start:], target)
+		if idx == -1 {
+			sb.WriteString(yamlStr[start:])
+			break
+		}
+
+		// Absolute position of the target in yamlStr
+		absIdx := start + idx
+
+		// Check if it's preceded only by spaces/tabs since the beginning of the line (or start of string)
+		isStartOfLine := true
+		for j := absIdx - 1; j >= 0; j-- {
+			c := yamlStr[j]
+			if c == '\n' {
+				break
+			}
+			if c != ' ' && c != '\t' {
+				isStartOfLine = false
+				break
+			}
+		}
+
+		if isStartOfLine {
+			// Write everything up to the target, then the unquoted key, then advance start
+			sb.WriteString(yamlStr[start:absIdx])
+			sb.WriteString(key)
+			sb.WriteByte(':')
+			start = absIdx + len(target)
+		} else {
+			// Not start of line, write up to the end of the match and continue searching after the match start
+			sb.WriteString(yamlStr[start : absIdx+1]) // write the '"' to avoid finding it again in the same place
+			start = absIdx + 1
+		}
+	}
+
+	return sb.String()
 }
 
 // UnquoteYAMLTopLevelKey removes quotes from a YAML key only when it appears
@@ -435,15 +454,54 @@ func recursivelyOrderYAMLValue(value any) any {
 //	result := CleanYAMLNullValues(input)
 //	// result: "on:\n  workflow_dispatch:\n  schedule:\n    - cron: '0 0 * * *'"
 func CleanYAMLNullValues(yamlStr string) string {
-	yamlLog.Print("Cleaning null values from YAML")
-
-	// Split into lines, process each line, and rejoin
-	lines := strings.Split(yamlStr, "\n")
-	for i, line := range lines {
-		lines[i] = yamlNullPattern.ReplaceAllString(line, ":")
+	if !strings.Contains(yamlStr, "null") {
+		return yamlStr
 	}
 
-	return strings.Join(lines, "\n")
+	if yamlLog.Enabled() {
+		yamlLog.Print("Cleaning null values from YAML")
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(yamlStr))
+
+	start := 0
+	for start < len(yamlStr) {
+		// Find the end of the current line
+		lineEnd := strings.IndexByte(yamlStr[start:], '\n')
+		var line string
+		var hasNewline bool
+		if lineEnd == -1 {
+			line = yamlStr[start:]
+			start = len(yamlStr)
+		} else {
+			line = yamlStr[start : start+lineEnd]
+			hasNewline = true
+			start = start + lineEnd + 1
+		}
+
+		// Now process the line: we want to find if it ends with `:\s*null\s*`
+		// Trim trailing whitespace first (spaces, tabs, carriage returns)
+		trimmedRight := strings.TrimRight(line, " \t\r")
+		if strings.HasSuffix(trimmedRight, "null") {
+			// Now check if before "null" there is a colon with optional spaces/tabs
+			// The index where "null" starts in trimmedRight:
+			nullStart := len(trimmedRight) - 4
+			// Strip spaces/tabs before nullStart
+			colonCheck := strings.TrimRight(trimmedRight[:nullStart], " \t")
+			if strings.HasSuffix(colonCheck, ":") {
+				// We matched! Replace the whole match with `:`
+				line = colonCheck
+			}
+		}
+
+		sb.WriteString(line)
+		if hasNewline {
+			sb.WriteByte('\n')
+		}
+	}
+
+	return sb.String()
 }
 
 // formatYAMLValue formats a value for YAML output, quoting strings and rendering

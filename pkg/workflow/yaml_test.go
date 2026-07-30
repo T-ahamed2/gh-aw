@@ -93,6 +93,25 @@ func TestCleanYAMLNullValues(t *testing.T) {
 	}
 }
 
+func BenchmarkCleanYAMLNullValues(b *testing.B) {
+	yamlStr := `on:
+  schedule:
+  - cron: "0 0 * * *"
+  workflow_dispatch: null
+  workflow_call: null
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Run
+      run: echo hello
+`
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = CleanYAMLNullValues(yamlStr)
+	}
+}
+
 func TestUnquoteYAMLKey(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -532,7 +551,7 @@ jobs:
       run: echo hello
 `
 	b.ReportAllocs()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		_ = UnquoteYAMLKey(yamlStr, "on")
 	}
 }
