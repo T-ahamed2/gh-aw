@@ -161,29 +161,54 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 //	result := UnquoteYAMLKey(input, "on")
 //	// result: "on:\n  push:\n    branches:\n      - main"
 func UnquoteYAMLKey(yamlStr string, key string) string {
-	yamlLog.Printf("Unquoting YAML key: %s", key)
-
-	// Create a regex pattern that matches the quoted key at the start of a line
-	// Pattern: (start of line or newline) + (optional whitespace) + quoted key + colon
-	pattern := `(^|\n)([ \t]*)"` + regexp.QuoteMeta(key) + `":`
-
-	// Use cached compiled regex to avoid recompiling on every call
-	var re *regexp.Regexp
-	if cached, ok := unquoteYAMLKeyCache.Load(key); ok {
-		var typeOK bool
-		re, typeOK = cached.(*regexp.Regexp)
-		if !typeOK {
-			unquoteYAMLKeyCache.Delete(key)
-			re = regexp.MustCompile(pattern)
-			unquoteYAMLKeyCache.Store(key, re)
-		}
-	} else {
-		re = regexp.MustCompile(pattern)
-		unquoteYAMLKeyCache.Store(key, re)
+	if yamlLog.Enabled() {
+		yamlLog.Printf("Unquoting YAML key: %s", key)
 	}
-	// Use ReplaceAllString with capture group references for a single-pass replacement.
-	// ${1} = line start (^ or \n), ${2} = optional whitespace
-	return re.ReplaceAllString(yamlStr, "${1}${2}"+key+":")
+
+	quoted := "\"" + key + "\":"
+	if !strings.Contains(yamlStr, quoted) {
+		return yamlStr
+	}
+
+	// Use a strings.Builder to build the unquoted YAML string efficiently.
+	var builder strings.Builder
+	builder.Grow(len(yamlStr))
+
+	current := yamlStr
+	for {
+		idx := strings.Index(current, quoted)
+		if idx == -1 {
+			builder.WriteString(current)
+			break
+		}
+
+		// Ensure the quoted key is preceded only by optional spaces/tabs since the last newline (or start of string)
+		isAtStartOfLine := true
+		for j := idx - 1; j >= 0; j-- {
+			char := current[j]
+			if char == '\n' {
+				break
+			}
+			if char != ' ' && char != '\t' {
+				isAtStartOfLine = false
+				break
+			}
+		}
+
+		if isAtStartOfLine {
+			// Write everything up to the quoted key
+			builder.WriteString(current[:idx])
+			// Write the unquoted key + colon
+			builder.WriteString(key)
+			builder.WriteByte(':')
+		} else {
+			// Write everything up to and including the quoted key (not at start of line)
+			builder.WriteString(current[:idx+len(quoted)])
+		}
+		current = current[idx+len(quoted):]
+	}
+
+	return builder.String()
 }
 
 // UnquoteYAMLTopLevelKey removes quotes from a YAML key only when it appears
