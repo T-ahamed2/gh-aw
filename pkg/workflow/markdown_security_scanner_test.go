@@ -771,7 +771,7 @@ func TestStripFrontmatter(t *testing.T) {
 		{
 			name:           "unclosed frontmatter",
 			content:        "---\nengine: copilot\n# Hello",
-			expectedBody:   "",
+			expectedBody:   "---\nengine: copilot\n# Hello",
 			expectedOffset: 0,
 		},
 		{
@@ -789,6 +789,13 @@ func TestStripFrontmatter(t *testing.T) {
 			assert.Equal(t, tt.expectedOffset, offset, "line offset should match")
 		})
 	}
+}
+
+func TestScanMarkdownSecurity_UnclosedFrontmatter_ScansEntireFile(t *testing.T) {
+	// Unclosed frontmatter block followed by dangerous payload
+	content := "---\nengine: copilot\n<script>alert(1)</script>"
+	findings := ScanMarkdownSecurity(content)
+	require.NotEmpty(t, findings, "should scan and find dangerous tags in unclosed frontmatter files")
 }
 
 func TestFormatSecurityFindings_Empty(t *testing.T) {
