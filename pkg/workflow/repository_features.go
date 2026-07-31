@@ -167,12 +167,12 @@ func getCurrentRepositoryUncached() (string, error) {
 	// This works when in a git repository with GitHub remote and respects GH_REPO
 	repo, err := repository.Current()
 	if err != nil {
-		return "", fmt.Errorf("failed to get current repository: %w", err)
+		return "", fmt.Errorf("failed to get current repository; %w; should check if git is installed and repository path is valid", err)
 	}
 
 	// Validate that owner and name are not empty
 	if repo.Owner == "" || repo.Name == "" {
-		return "", fmt.Errorf("repository owner or name is empty (owner: %q, name: %q)", repo.Owner, repo.Name)
+		return "", fmt.Errorf("repository owner or name is empty (owner: %q, name: %q); expected a valid non-empty repository structure", repo.Owner, repo.Name)
 	}
 
 	repoName := fmt.Sprintf("%s/%s", repo.Owner, repo.Name)
@@ -201,14 +201,14 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	// Check discussions
 	hasDiscussions, err := checkRepositoryHasDiscussionsUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check discussions: %w", err)
+		return nil, fmt.Errorf("failed to check discussions; %w; should check connection or token permissions are valid", err)
 	}
 	features.HasDiscussions = hasDiscussions
 
 	// Check issues
 	hasIssues, err := checkRepositoryHasIssuesUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check issues: %w", err)
+		return nil, fmt.Errorf("failed to check issues; %w; should check connection or token permissions are valid", err)
 	}
 	features.HasIssues = hasIssues
 
@@ -281,12 +281,12 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	stdOut, _, err := gh.Exec("api", "graphql", "-f", "query="+query,
 		"-f", "owner="+owner, "-f", "name="+name)
 	if err != nil {
-		return false, fmt.Errorf("failed to query discussions status: %w", err)
+		return false, fmt.Errorf("failed to query discussions status; %w; should check connection or token permissions are valid", err)
 	}
 
 	var response GraphQLResponse
 	if err := json.Unmarshal(stdOut.Bytes(), &response); err != nil {
-		return false, fmt.Errorf("failed to parse GraphQL response: %w", err)
+		return false, fmt.Errorf("failed to parse GraphQL response; %w; expected a valid JSON response structure", err)
 	}
 
 	return response.Data.Repository.HasDiscussionsEnabled, nil
@@ -312,14 +312,14 @@ func checkRepositoryHasIssuesUncached(repo string) (bool, error) {
 	// Create REST client
 	client, err := api.DefaultRESTClient()
 	if err != nil {
-		return false, fmt.Errorf("failed to create REST client: %w", err)
+		return false, fmt.Errorf("failed to create REST client; %w; should check environment variables are valid", err)
 	}
 
 	// Fetch repository data using REST client
 	var response RepositoryResponse
 	err = client.Get("repos/"+repo, &response)
 	if err != nil {
-		return false, fmt.Errorf("failed to query repository: %w", err)
+		return false, fmt.Errorf("failed to query repository; %w; should check connection or token permissions are valid", err)
 	}
 
 	return response.HasIssues, nil
