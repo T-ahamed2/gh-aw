@@ -7,7 +7,7 @@
 //
 //   - validation.go: This file - package documentation only
 //   - strict_mode_validation.go: Security and strict mode validation
-//   - repository_features_validation.go: Repository capability detection
+//   - repository_features.go: Repository capability detection
 //   - schema_validation.go: GitHub Actions schema validation
 //   - runtime_validation.go: Runtime packages, containers, expressions
 //   - agent_validation.go: Agent files and feature support
