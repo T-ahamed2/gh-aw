@@ -161,29 +161,54 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 //	result := UnquoteYAMLKey(input, "on")
 //	// result: "on:\n  push:\n    branches:\n      - main"
 func UnquoteYAMLKey(yamlStr string, key string) string {
-	yamlLog.Printf("Unquoting YAML key: %s", key)
-
-	// Create a regex pattern that matches the quoted key at the start of a line
-	// Pattern: (start of line or newline) + (optional whitespace) + quoted key + colon
-	pattern := `(^|\n)([ \t]*)"` + regexp.QuoteMeta(key) + `":`
-
-	// Use cached compiled regex to avoid recompiling on every call
-	var re *regexp.Regexp
-	if cached, ok := unquoteYAMLKeyCache.Load(key); ok {
-		var typeOK bool
-		re, typeOK = cached.(*regexp.Regexp)
-		if !typeOK {
-			unquoteYAMLKeyCache.Delete(key)
-			re = regexp.MustCompile(pattern)
-			unquoteYAMLKeyCache.Store(key, re)
-		}
-	} else {
-		re = regexp.MustCompile(pattern)
-		unquoteYAMLKeyCache.Store(key, re)
+	if yamlLog.Enabled() {
+		yamlLog.Printf("Unquoting YAML key: %s", key)
 	}
-	// Use ReplaceAllString with capture group references for a single-pass replacement.
-	// ${1} = line start (^ or \n), ${2} = optional whitespace
-	return re.ReplaceAllString(yamlStr, "${1}${2}"+key+":")
+
+	target := `"` + key + `":`
+	if !strings.Contains(yamlStr, target) {
+		return yamlStr
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(yamlStr))
+
+	start := 0
+	for {
+		idx := strings.Index(yamlStr[start:], target)
+		if idx == -1 {
+			sb.WriteString(yamlStr[start:])
+			break
+		}
+
+		matchIdx := start + idx
+		// Check if preceded only by optional spaces/tabs back to the start of the string or a newline
+		isAtStartOfLine := true
+		for i := matchIdx - 1; i >= 0; i-- {
+			char := yamlStr[i]
+			if char == '\n' {
+				break
+			}
+			if char != ' ' && char != '\t' {
+				isAtStartOfLine = false
+				break
+			}
+		}
+
+		if isAtStartOfLine {
+			// Write everything up to matchIdx
+			sb.WriteString(yamlStr[start:matchIdx])
+			// Write the unquoted key and colon
+			sb.WriteString(key)
+			sb.WriteByte(':')
+		} else {
+			// Write up to the end of target
+			sb.WriteString(yamlStr[start : matchIdx+len(target)])
+		}
+		start = matchIdx + len(target)
+	}
+
+	return sb.String()
 }
 
 // UnquoteYAMLTopLevelKey removes quotes from a YAML key only when it appears
@@ -253,7 +278,9 @@ func UnquoteYAMLTopLevelKey(yamlStr string, key string) string {
 //	// permissions: ...
 //	// jobs: ...
 func MarshalWithFieldOrder(data map[string]any, priorityFields []string) ([]byte, error) {
-	yamlLog.Printf("Marshaling YAML with field order: %d priority fields", len(priorityFields))
+	if yamlLog.Enabled() {
+		yamlLog.Printf("Marshaling YAML with field order: %d priority fields", len(priorityFields))
+	}
 
 	// Convert the map to an ordered MapSlice structure
 	orderedData := OrderMapFields(data, priorityFields)
@@ -306,7 +333,9 @@ func MarshalWithFieldOrder(data map[string]any, priorityFields []string) ([]byte
 //	orderedPerms := OrderMapFields(permissions, []string{})
 //	// orderedPerms will have: contents, issues, pull-requests
 func OrderMapFields(data map[string]any, priorityFields []string) yaml.MapSlice {
-	yamlLog.Printf("Ordering map fields: total=%d, priority=%d", len(data), len(priorityFields))
+	if yamlLog.Enabled() {
+		yamlLog.Printf("Ordering map fields: total=%d, priority=%d", len(data), len(priorityFields))
+	}
 
 	var orderedData yaml.MapSlice
 
@@ -435,15 +464,65 @@ func recursivelyOrderYAMLValue(value any) any {
 //	result := CleanYAMLNullValues(input)
 //	// result: "on:\n  workflow_dispatch:\n  schedule:\n    - cron: '0 0 * * *'"
 func CleanYAMLNullValues(yamlStr string) string {
-	yamlLog.Print("Cleaning null values from YAML")
-
-	// Split into lines, process each line, and rejoin
-	lines := strings.Split(yamlStr, "\n")
-	for i, line := range lines {
-		lines[i] = yamlNullPattern.ReplaceAllString(line, ":")
+	if yamlLog.Enabled() {
+		yamlLog.Print("Cleaning null values from YAML")
 	}
 
-	return strings.Join(lines, "\n")
+	if !strings.Contains(yamlStr, "null") {
+		return yamlStr
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(yamlStr))
+
+	start := 0
+	for start < len(yamlStr) {
+		end := strings.IndexByte(yamlStr[start:], '\n')
+		var line string
+		var hasNewline bool
+		if end == -1 {
+			line = yamlStr[start:]
+			start = len(yamlStr)
+		} else {
+			line = yamlStr[start : start+end]
+			start = start + end + 1
+			hasNewline = true
+		}
+
+		// Check if the line ends with `: null` (with optional whitespace)
+		// We want to match: :[ \t]*null[ \t]*$
+		trimmed := strings.TrimRight(line, " \t")
+		if strings.HasSuffix(trimmed, "null") {
+			nullStart := len(trimmed) - 4
+			hasColon := false
+			colonIdx := -1
+			for i := nullStart - 1; i >= 0; i-- {
+				char := trimmed[i]
+				if char == ':' {
+					hasColon = true
+					colonIdx = i
+					break
+				}
+				if char != ' ' && char != '\t' {
+					break
+				}
+			}
+
+			if hasColon {
+				sb.WriteString(line[:colonIdx+1])
+			} else {
+				sb.WriteString(line)
+			}
+		} else {
+			sb.WriteString(line)
+		}
+
+		if hasNewline {
+			sb.WriteByte('\n')
+		}
+	}
+
+	return sb.String()
 }
 
 // formatYAMLValue formats a value for YAML output, quoting strings and rendering
