@@ -39,14 +39,39 @@ func NormalizeGitHubHostURL(rawHostURL string) string {
 //	ExtractDomainFromURL("http://sub.domain.com:8080/path")       // returns "sub.domain.com"
 //	ExtractDomainFromURL("localhost:8080")                        // returns "localhost"
 func ExtractDomainFromURL(urlStr string) string {
-	urlsLog.Printf("Extracting domain from URL: %s", urlStr)
+	if urlsLog.Enabled() {
+		urlsLog.Printf("Extracting domain from URL: %s", urlStr)
+	}
 	// Handle full URLs with protocols (http://, https://)
-	if strings.HasPrefix(urlStr, "http://") || strings.HasPrefix(urlStr, "https://") {
+	if strings.HasPrefix(urlStr, "https://") || strings.HasPrefix(urlStr, "http://") {
+		var start int
+		if strings.HasPrefix(urlStr, "https://") {
+			start = 8
+		} else {
+			start = 7
+		}
+
+		// Fast-path: check if URL contains no complex characters that require full parsing
+		if !strings.ContainsAny(urlStr, "@[]%") {
+			remainder := urlStr[start:]
+			end := len(remainder)
+			for i := 0; i < len(remainder); i++ {
+				c := remainder[i]
+				if c == '/' || c == ':' || c == '?' || c == '#' {
+					end = i
+					break
+				}
+			}
+			return remainder[:end]
+		}
+
 		// Parse full URL
 		parsedURL, err := url.Parse(urlStr)
 		if err != nil {
 			// Fall back to string manipulation if parsing fails
-			urlsLog.Printf("URL parse failed, using fallback: %v", err)
+			if urlsLog.Enabled() {
+				urlsLog.Printf("URL parse failed, using fallback: %v", err)
+			}
 			return extractDomainFallback(urlStr)
 		}
 		return parsedURL.Hostname()
