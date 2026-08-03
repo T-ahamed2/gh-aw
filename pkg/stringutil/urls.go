@@ -55,7 +55,7 @@ func ExtractDomainFromURL(urlStr string) string {
 		if !strings.ContainsAny(urlStr, "@[]%") {
 			remainder := urlStr[start:]
 			end := len(remainder)
-			for i := 0; i < len(remainder); i++ {
+			for i := range len(remainder) {
 				c := remainder[i]
 				if c == '/' || c == ':' || c == '?' || c == '#' {
 					end = i
