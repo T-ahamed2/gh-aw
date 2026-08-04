@@ -771,7 +771,7 @@ func TestStripFrontmatter(t *testing.T) {
 		{
 			name:           "unclosed frontmatter",
 			content:        "---\nengine: copilot\n# Hello",
-			expectedBody:   "",
+			expectedBody:   "---\nengine: copilot\n# Hello",
 			expectedOffset: 0,
 		},
 		{
@@ -789,6 +789,14 @@ func TestStripFrontmatter(t *testing.T) {
 			assert.Equal(t, tt.expectedOffset, offset, "line offset should match")
 		})
 	}
+}
+
+func TestScanMarkdownSecurity_UnclosedFrontmatterMalicious(t *testing.T) {
+	content := "---\nengine: copilot\n<script>alert(1)</script>"
+	findings := ScanMarkdownSecurity(content)
+	require.NotEmpty(t, findings, "should detect script tag in unclosed frontmatter")
+	assert.Equal(t, CategoryHTMLAbuse, findings[0].Category)
+	assert.Equal(t, 3, findings[0].Line)
 }
 
 func TestFormatSecurityFindings_Empty(t *testing.T) {
