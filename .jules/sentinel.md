@@ -1,0 +1,4 @@
+## 2026-08-04 - Unclosed Markdown Frontmatter Scanner Bypass
+**Vulnerability:** In `markdown_security_scanner.go`, the function `stripFrontmatter` returned empty content if a frontmatter block started with `---` but had no closing `---`, causing the scanner to completely skip security checks of the remaining content. This allowed malicious payloads to bypass scanning.
+**Learning:** Parsing logic in security filters must handle malformed or unclosed delimiter blocks securely. Assuming documents are perfectly well-formed can lead to parser-differential vulnerabilities where down-stream tools process or render malformed content that the security scanner skipped.
+**Prevention:** Always treat unclosed structures as content that must be scanned, and fail closed/safely when dealing with malformed blocks.
