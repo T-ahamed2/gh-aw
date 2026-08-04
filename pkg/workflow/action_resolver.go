@@ -169,12 +169,12 @@ func ParseTagRefTSV(line string) (sha, objType string, err error) {
 	line = strings.TrimSpace(line)
 	parts := strings.SplitN(line, "\t", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("unexpected format: %q", line)
+		return "", "", fmt.Errorf("unrecognized tag reference output format: %q; expected tab-separated fields", line)
 	}
 	sha = parts[0]
 	objType = parts[1]
 	if len(sha) != 40 || !gitutil.IsHexString(sha) {
-		return "", "", fmt.Errorf("invalid SHA format: expected 40 hex characters, got %d (%s)", len(sha), sha)
+		return "", "", fmt.Errorf("invalid SHA value in tag reference: expected 40 hex characters, got %d (%s)", len(sha), sha)
 	}
 	return sha, objType, nil
 }
