@@ -101,7 +101,7 @@ func (r *ActionResolver) ResolveSHA(ctx context.Context, repo, version string) (
 	// Check if we've already failed to resolve this action in this run
 	if r.failedResolutions[cacheKey] {
 		resolverLog.Printf("Skipping resolution for %s@%s: already failed in this run", repo, version)
-		return "", fmt.Errorf("previously failed to resolve %s@%s in this compilation run", repo, version)
+		return "", fmt.Errorf("previously failed to resolve %s@%s in this compilation run; should verify network connectivity or check if tag exists", repo, version)
 	}
 
 	// Check cache first using the pre-computed key to avoid a second key allocation.
@@ -204,12 +204,12 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 	ForceGHHostEnv(cmd, "github.com")
 	output, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve %s@%s: %w", repo, version, err)
+		return "", fmt.Errorf("resolve %s@%s: %w; should verify repository permissions or check if tag exists", repo, version, err)
 	}
 
 	sha, objType, err := ParseTagRefTSV(string(output))
 	if err != nil {
-		return "", fmt.Errorf("failed to parse API response for %s@%s: %w", repo, version, err)
+		return "", fmt.Errorf("parse API response for %s@%s: %w; expected valid TSV containing object SHA and type", repo, version, err)
 	}
 
 	// Annotated tags (and chained tag objects) point to a tag object rather than
@@ -219,7 +219,7 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 	const maxTagPeelDepth = 10
 	for depth := 0; objType == "tag"; depth++ {
 		if depth >= maxTagPeelDepth {
-			return "", fmt.Errorf("failed to resolve %s@%s: exceeded max tag peel depth %d", repo, version, maxTagPeelDepth)
+			return "", fmt.Errorf("resolve %s@%s: exceeded max tag peel depth %d; should check for tag-peeling circular reference loop", repo, version, maxTagPeelDepth)
 		}
 		resolverLog.Printf("Detected annotated tag for %s@%s (depth %d, tag object SHA: %s), peeling to underlying object", repo, version, depth, sha)
 		tagPath := fmt.Sprintf("/repos/%s/git/tags/%s", baseRepo, sha)
@@ -235,11 +235,11 @@ func (r *ActionResolver) resolveFromGitHub(ctx context.Context, repo, version st
 			ForceGHHostEnv(cmd2, "github.com")
 			output2, peelErr := cmd2.Output()
 			if peelErr != nil {
-				return fmt.Errorf("failed to peel annotated tag %s@%s: %w", repo, version, peelErr)
+				return fmt.Errorf("peel annotated tag %s@%s: %w; should check tag object permissions and network connection", repo, version, peelErr)
 			}
 			sha, objType, err = ParseTagRefTSV(string(output2))
 			if err != nil {
-				return fmt.Errorf("failed to parse peeled tag API response for %s@%s: %w", repo, version, err)
+				return fmt.Errorf("parse peeled tag API response for %s@%s: %w; expected valid TSV with object SHA and type", repo, version, err)
 			}
 			return nil
 		}()
