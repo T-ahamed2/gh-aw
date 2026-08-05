@@ -32,20 +32,71 @@ func Truncate(s string, maxLen int) string {
 // NormalizeWhitespace normalizes trailing whitespace and newlines to reduce spurious conflicts.
 // It trims trailing whitespace from each line and ensures exactly one trailing newline.
 func NormalizeWhitespace(content string) string {
-	// Split into lines and trim trailing whitespace from each line
-	lines := strings.Split(content, "\n")
-	for i, line := range lines {
-		lines[i] = strings.TrimRight(line, " \t")
+	if content == "" {
+		return ""
 	}
 
-	// Join back and ensure exactly one trailing newline if content is not empty
-	normalized := strings.Join(lines, "\n")
-	normalized = strings.TrimRight(normalized, "\n")
-	if len(normalized) > 0 {
-		normalized += "\n"
+	var builder strings.Builder
+	builder.Grow(len(content))
+
+	start := 0
+	pendingNewlines := 0
+	hasWritten := false
+
+	for start < len(content) {
+		nextNL := strings.IndexByte(content[start:], '\n')
+		var end int
+		if nextNL == -1 {
+			end = len(content)
+		} else {
+			end = start + nextNL
+		}
+
+		// Trim trailing spaces and tabs from the current line
+		trimmedEnd := end
+		for trimmedEnd > start {
+			c := content[trimmedEnd-1]
+			if c == ' ' || c == '\t' {
+				trimmedEnd--
+			} else {
+				break
+			}
+		}
+
+		if trimmedEnd > start {
+			// Non-empty line.
+			if hasWritten {
+				// We need 1 separator newline plus any intermediate empty lines
+				for range 1 + pendingNewlines {
+					builder.WriteByte('\n')
+				}
+			} else {
+				// This is the first non-empty line. Write any leading empty lines.
+				for range pendingNewlines {
+					builder.WriteByte('\n')
+				}
+				hasWritten = true
+			}
+			builder.WriteString(content[start:trimmedEnd])
+			pendingNewlines = 0
+		} else {
+			// Empty line.
+			pendingNewlines++
+		}
+
+		if nextNL == -1 {
+			break
+		}
+		start = end + 1
 	}
 
-	return normalized
+	// If we wrote anything, ensure exactly one trailing newline.
+	if hasWritten {
+		builder.WriteByte('\n')
+		return builder.String()
+	}
+
+	return ""
 }
 
 // ParseVersionValue converts version values of various types to strings.
