@@ -67,12 +67,12 @@ func NormalizeWhitespace(content string) string {
 			// Non-empty line.
 			if hasWritten {
 				// We need 1 separator newline plus any intermediate empty lines
-				for i := 0; i < 1+pendingNewlines; i++ {
+				for range 1 + pendingNewlines {
 					builder.WriteByte('\n')
 				}
 			} else {
 				// This is the first non-empty line. Write any leading empty lines.
-				for i := 0; i < pendingNewlines; i++ {
+				for range pendingNewlines {
 					builder.WriteByte('\n')
 				}
 				hasWritten = true
