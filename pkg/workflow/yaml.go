@@ -161,29 +161,60 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 //	result := UnquoteYAMLKey(input, "on")
 //	// result: "on:\n  push:\n    branches:\n      - main"
 func UnquoteYAMLKey(yamlStr string, key string) string {
-	yamlLog.Printf("Unquoting YAML key: %s", key)
-
-	// Create a regex pattern that matches the quoted key at the start of a line
-	// Pattern: (start of line or newline) + (optional whitespace) + quoted key + colon
-	pattern := `(^|\n)([ \t]*)"` + regexp.QuoteMeta(key) + `":`
-
-	// Use cached compiled regex to avoid recompiling on every call
-	var re *regexp.Regexp
-	if cached, ok := unquoteYAMLKeyCache.Load(key); ok {
-		var typeOK bool
-		re, typeOK = cached.(*regexp.Regexp)
-		if !typeOK {
-			unquoteYAMLKeyCache.Delete(key)
-			re = regexp.MustCompile(pattern)
-			unquoteYAMLKeyCache.Store(key, re)
-		}
-	} else {
-		re = regexp.MustCompile(pattern)
-		unquoteYAMLKeyCache.Store(key, re)
+	// Performance optimization: Avoid logging and string allocation on hot paths when disabled
+	if yamlLog.Enabled() {
+		yamlLog.Printf("Unquoting YAML key: %s", key)
 	}
-	// Use ReplaceAllString with capture group references for a single-pass replacement.
-	// ${1} = line start (^ or \n), ${2} = optional whitespace
-	return re.ReplaceAllString(yamlStr, "${1}${2}"+key+":")
+
+	quotedKey := `"` + key + `":`
+	if !strings.Contains(yamlStr, quotedKey) {
+		return yamlStr
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(yamlStr))
+
+	currentPos := 0
+	quotedKeyLen := len(quotedKey)
+
+	for {
+		offset := strings.Index(yamlStr[currentPos:], quotedKey)
+		if offset == -1 {
+			sb.WriteString(yamlStr[currentPos:])
+			break
+		}
+
+		idx := currentPos + offset
+
+		// Find the start of the line containing the match
+		lineStart := 0
+		if lastNewline := strings.LastIndexByte(yamlStr[:idx], '\n'); lastNewline != -1 {
+			lineStart = lastNewline + 1
+		}
+
+		// Check if everything before the match on this line is whitespace (spaces/tabs)
+		isStartOfLine := true
+		for i := lineStart; i < idx; i++ {
+			if yamlStr[i] != ' ' && yamlStr[i] != '\t' {
+				isStartOfLine = false
+				break
+			}
+		}
+
+		if isStartOfLine {
+			// Write everything up to the match, then the unquoted key and colon
+			sb.WriteString(yamlStr[currentPos:idx])
+			sb.WriteString(key)
+			sb.WriteByte(':')
+			currentPos = idx + quotedKeyLen
+		} else {
+			// Write up to and including the match to avoid re-matching
+			sb.WriteString(yamlStr[currentPos : idx+quotedKeyLen])
+			currentPos = idx + quotedKeyLen
+		}
+	}
+
+	return sb.String()
 }
 
 // UnquoteYAMLTopLevelKey removes quotes from a YAML key only when it appears
