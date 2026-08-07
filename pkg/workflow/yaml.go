@@ -92,7 +92,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/goccy/go-yaml"
@@ -102,9 +101,6 @@ var yamlLog = logger.New("workflow:yaml")
 
 // yamlNullPattern matches `: null` at the end of a line (pre-compiled for performance)
 var yamlNullPattern = regexp.MustCompile(`:\s*null\s*$`)
-
-// unquoteYAMLKeyCache caches compiled regexes for UnquoteYAMLKey by key name
-var unquoteYAMLKeyCache sync.Map
 
 // readWorkflowYAML reads and parses a trusted workflow YAML file path.
 // The caller is responsible for repository-boundary validation (for example via
@@ -161,29 +157,63 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 //	result := UnquoteYAMLKey(input, "on")
 //	// result: "on:\n  push:\n    branches:\n      - main"
 func UnquoteYAMLKey(yamlStr string, key string) string {
-	yamlLog.Printf("Unquoting YAML key: %s", key)
-
-	// Create a regex pattern that matches the quoted key at the start of a line
-	// Pattern: (start of line or newline) + (optional whitespace) + quoted key + colon
-	pattern := `(^|\n)([ \t]*)"` + regexp.QuoteMeta(key) + `":`
-
-	// Use cached compiled regex to avoid recompiling on every call
-	var re *regexp.Regexp
-	if cached, ok := unquoteYAMLKeyCache.Load(key); ok {
-		var typeOK bool
-		re, typeOK = cached.(*regexp.Regexp)
-		if !typeOK {
-			unquoteYAMLKeyCache.Delete(key)
-			re = regexp.MustCompile(pattern)
-			unquoteYAMLKeyCache.Store(key, re)
-		}
-	} else {
-		re = regexp.MustCompile(pattern)
-		unquoteYAMLKeyCache.Store(key, re)
+	if yamlLog.Enabled() {
+		yamlLog.Printf("Unquoting YAML key: %s", key)
 	}
-	// Use ReplaceAllString with capture group references for a single-pass replacement.
-	// ${1} = line start (^ or \n), ${2} = optional whitespace
-	return re.ReplaceAllString(yamlStr, "${1}${2}"+key+":")
+
+	target := `"` + key + `":`
+	if !strings.Contains(yamlStr, target) {
+		return yamlStr
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(yamlStr))
+
+	start := 0
+	targetLen := len(target)
+	for {
+		idx := strings.Index(yamlStr[start:], target)
+		if idx == -1 {
+			builder.WriteString(yamlStr[start:])
+			break
+		}
+		// Match position in the original yamlStr
+		matchIdx := start + idx
+
+		// Check if it's preceded by start of string or newline, and only spaces/tabs
+		isStartOfLine := false
+
+		// Look backwards to verify if it is preceded only by spaces/tabs up to a newline or start of string
+		for i := matchIdx - 1; i >= -1; i-- {
+			if i == -1 {
+				isStartOfLine = true
+				break
+			}
+			char := yamlStr[i]
+			if char == '\n' {
+				isStartOfLine = true
+				break
+			}
+			if char != ' ' && char != '\t' {
+				break
+			}
+		}
+
+		if isStartOfLine {
+			// Write everything up to matchIdx (which includes the spaces/tabs)
+			builder.WriteString(yamlStr[start:matchIdx])
+			// Write the unquoted key and colon
+			builder.WriteString(key)
+			builder.WriteByte(':')
+		} else {
+			// Write everything up to the end of target
+			builder.WriteString(yamlStr[start : matchIdx+targetLen])
+		}
+		// Advance start past the target
+		start = matchIdx + targetLen
+	}
+
+	return builder.String()
 }
 
 // UnquoteYAMLTopLevelKey removes quotes from a YAML key only when it appears
