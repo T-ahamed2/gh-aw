@@ -94,17 +94,18 @@ func TestRepositoryFeaturesValidationIntegration(t *testing.T) {
 		compiler := NewCompiler()
 		err := compiler.validateRepositoryFeatures(workflowData)
 
+		// After the fix, validation should only issue a warning instead of erroring, so err should be nil
+		if err != nil {
+			t.Errorf("Expected no error (validation should only warn), got: %v", err)
+		}
+
+		// Log the issues status for debugging
 		hasIssues, checkErr := checkRepositoryHasIssues(repo, false)
 		if checkErr != nil {
 			t.Logf("Could not verify issues status: %v", checkErr)
 			return
 		}
-
-		if hasIssues && err != nil {
-			t.Errorf("Expected no error when issues are enabled, got: %v", err)
-		} else if !hasIssues && err == nil {
-			t.Error("Expected error when issues are disabled, got none")
-		}
+		t.Logf("Repository %s has issues enabled: %v", repo, hasIssues)
 	})
 }
 
