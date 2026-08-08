@@ -87,24 +87,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/goccy/go-yaml"
 )
 
 var yamlLog = logger.New("workflow:yaml")
-
-// yamlNullPattern matches `: null` at the end of a line (pre-compiled for performance)
-var yamlNullPattern = regexp.MustCompile(`:\s*null\s*$`)
-
-// unquoteYAMLKeyCache caches compiled regexes for UnquoteYAMLKey by key name
-var unquoteYAMLKeyCache sync.Map
 
 // readWorkflowYAML reads and parses a trusted workflow YAML file path.
 // The caller is responsible for repository-boundary validation (for example via
@@ -161,29 +153,53 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 //	result := UnquoteYAMLKey(input, "on")
 //	// result: "on:\n  push:\n    branches:\n      - main"
 func UnquoteYAMLKey(yamlStr string, key string) string {
-	yamlLog.Printf("Unquoting YAML key: %s", key)
-
-	// Create a regex pattern that matches the quoted key at the start of a line
-	// Pattern: (start of line or newline) + (optional whitespace) + quoted key + colon
-	pattern := `(^|\n)([ \t]*)"` + regexp.QuoteMeta(key) + `":`
-
-	// Use cached compiled regex to avoid recompiling on every call
-	var re *regexp.Regexp
-	if cached, ok := unquoteYAMLKeyCache.Load(key); ok {
-		var typeOK bool
-		re, typeOK = cached.(*regexp.Regexp)
-		if !typeOK {
-			unquoteYAMLKeyCache.Delete(key)
-			re = regexp.MustCompile(pattern)
-			unquoteYAMLKeyCache.Store(key, re)
-		}
-	} else {
-		re = regexp.MustCompile(pattern)
-		unquoteYAMLKeyCache.Store(key, re)
+	if yamlLog.Enabled() {
+		yamlLog.Printf("Unquoting YAML key: %s", key)
 	}
-	// Use ReplaceAllString with capture group references for a single-pass replacement.
-	// ${1} = line start (^ or \n), ${2} = optional whitespace
-	return re.ReplaceAllString(yamlStr, "${1}${2}"+key+":")
+
+	target := `"` + key + `":`
+	if !strings.Contains(yamlStr, target) {
+		return yamlStr
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(yamlStr))
+
+	pos := 0
+	for {
+		idx := strings.Index(yamlStr[pos:], target)
+		if idx == -1 {
+			sb.WriteString(yamlStr[pos:])
+			break
+		}
+
+		absIdx := pos + idx
+
+		isStartOfLine := true
+		for i := absIdx - 1; i >= 0; i-- {
+			ch := yamlStr[i]
+			if ch == '\n' {
+				break
+			}
+			if ch != ' ' && ch != '\t' {
+				isStartOfLine = false
+				break
+			}
+		}
+
+		sb.WriteString(yamlStr[pos:absIdx])
+
+		if isStartOfLine {
+			sb.WriteString(key)
+			sb.WriteByte(':')
+		} else {
+			sb.WriteString(target)
+		}
+
+		pos = absIdx + len(target)
+	}
+
+	return sb.String()
 }
 
 // UnquoteYAMLTopLevelKey removes quotes from a YAML key only when it appears
@@ -435,15 +451,45 @@ func recursivelyOrderYAMLValue(value any) any {
 //	result := CleanYAMLNullValues(input)
 //	// result: "on:\n  workflow_dispatch:\n  schedule:\n    - cron: '0 0 * * *'"
 func CleanYAMLNullValues(yamlStr string) string {
-	yamlLog.Print("Cleaning null values from YAML")
-
-	// Split into lines, process each line, and rejoin
-	lines := strings.Split(yamlStr, "\n")
-	for i, line := range lines {
-		lines[i] = yamlNullPattern.ReplaceAllString(line, ":")
+	if yamlLog.Enabled() {
+		yamlLog.Print("Cleaning null values from YAML")
 	}
 
-	return strings.Join(lines, "\n")
+	if !strings.Contains(yamlStr, "null") {
+		return yamlStr
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(yamlStr))
+
+	pos := 0
+	for pos < len(yamlStr) {
+		nextNL := strings.IndexByte(yamlStr[pos:], '\n')
+		var line string
+		if nextNL == -1 {
+			line = yamlStr[pos:]
+			pos = len(yamlStr)
+		} else {
+			line = yamlStr[pos : pos+nextNL]
+			pos = pos + nextNL + 1
+		}
+
+		trimmed := strings.TrimRight(line, " \t")
+		if strings.HasSuffix(trimmed, "null") {
+			before := trimmed[:len(trimmed)-4]
+			beforeTrimmed := strings.TrimRight(before, " \t")
+			if strings.HasSuffix(beforeTrimmed, ":") {
+				line = beforeTrimmed
+			}
+		}
+
+		sb.WriteString(line)
+		if pos < len(yamlStr) || (nextNL != -1 && pos == len(yamlStr)) {
+			sb.WriteByte('\n')
+		}
+	}
+
+	return sb.String()
 }
 
 // formatYAMLValue formats a value for YAML output, quoting strings and rendering

@@ -537,6 +537,19 @@ jobs:
 	}
 }
 
+func BenchmarkCleanYAMLNullValues(b *testing.B) {
+	yamlStr := `on:
+  workflow_dispatch: null
+  workflow_call: null
+  schedule:
+  - cron: "0 0 * * *"
+`
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = CleanYAMLNullValues(yamlStr)
+	}
+}
+
 func TestFormatYAMLValue(t *testing.T) {
 	tests := []struct {
 		name     string
