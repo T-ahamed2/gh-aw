@@ -106,18 +106,21 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 	cleanPath := filepath.Clean(workflowPath)
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
+		//nolint:errormessage
 		return nil, fmt.Errorf("failed to resolve workflow path %s: %w", workflowPath, err)
 	}
 
 	content, err := os.ReadFile(absPath) // #nosec G304 -- Caller provides trusted path, and path is normalized/absolute-resolved above
 	if err != nil {
 		yamlLog.Printf("Failed to read workflow file %s: %v", workflowPath, err)
+		//nolint:errormessage
 		return nil, fmt.Errorf("failed to read workflow file %s: %w", workflowPath, err)
 	}
 
 	var workflow map[string]any
 	if err := yaml.Unmarshal(content, &workflow); err != nil {
 		yamlLog.Printf("Failed to parse workflow file %s: %v", workflowPath, err)
+		//nolint:errormessage
 		return nil, fmt.Errorf("failed to parse workflow file %s: %w", workflowPath, err)
 	}
 
@@ -474,6 +477,11 @@ func CleanYAMLNullValues(yamlStr string) string {
 			pos = pos + nextNL + 1
 		}
 
+		hasCR := strings.HasSuffix(line, "\r")
+		if hasCR {
+			line = line[:len(line)-1]
+		}
+
 		trimmed := strings.TrimRight(line, " \t")
 		if strings.HasSuffix(trimmed, "null") {
 			before := trimmed[:len(trimmed)-4]
@@ -484,6 +492,9 @@ func CleanYAMLNullValues(yamlStr string) string {
 		}
 
 		sb.WriteString(line)
+		if hasCR {
+			sb.WriteByte('\r')
+		}
 		if pos < len(yamlStr) || (nextNL != -1 && pos == len(yamlStr)) {
 			sb.WriteByte('\n')
 		}

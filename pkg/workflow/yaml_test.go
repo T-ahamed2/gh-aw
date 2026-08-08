@@ -27,6 +27,11 @@ func TestCleanYAMLNullValues(t *testing.T) {
   workflow_dispatch:`,
 		},
 		{
+			name:     "workflow_dispatch with null and CRLF",
+			input:    "on:\r\n  schedule:\r\n  - cron: \"0 0 * * *\"\r\n  workflow_dispatch: null\r\n",
+			expected: "on:\r\n  schedule:\r\n  - cron: \"0 0 * * *\"\r\n  workflow_dispatch:\r\n",
+		},
+		{
 			name: "multiple null values",
 			input: `on:
   workflow_dispatch: null
@@ -532,7 +537,7 @@ jobs:
       run: echo hello
 `
 	b.ReportAllocs()
-	for b.Loop() {
+	for range b.N {
 		_ = UnquoteYAMLKey(yamlStr, "on")
 	}
 }
@@ -545,7 +550,7 @@ func BenchmarkCleanYAMLNullValues(b *testing.B) {
   - cron: "0 0 * * *"
 `
 	b.ReportAllocs()
-	for b.Loop() {
+	for range b.N {
 		_ = CleanYAMLNullValues(yamlStr)
 	}
 }
