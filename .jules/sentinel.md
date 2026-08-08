@@ -1,0 +1,4 @@
+## 2026-08-08 - Git Command Option Injection Mitigation
+**Vulnerability:** Git command execution paths (such as `git clone`, `git ls-remote`, `git archive`, and `git checkout`) were susceptible to flag/option injection when passing user-supplied references or paths (e.g., branch/tag references or directory paths starting with `-`).
+**Learning:** Certain Git subcommands like `checkout` and `ls-remote` do not support the `--` option delineator for reference/branch arguments, making simple parameter separation insufficient. This allows hyphen-prefixed inputs to be parsed as option flags.
+**Prevention:** Explicitly validate all user-supplied Git arguments using a centralized validation helper (`gitutil.ValidateGitArg`) to reject any arguments starting with `-` before they are passed to `exec.CommandContext`.

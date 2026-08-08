@@ -82,3 +82,45 @@ func TestListContentsRecursivelyWithDepth_MaxDepthGuard(t *testing.T) {
 		t.Fatalf("expected depth limit error, got %q", err)
 	}
 }
+
+func TestGitArgumentValidation(t *testing.T) {
+	t.Run("DownloadFileFromGitHub rejects hyphen ref", func(t *testing.T) {
+		_, err := DownloadFileFromGitHub("owner", "repo", "path.md", "--upload-pack=pwn")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid git argument") {
+			t.Fatalf("expected invalid git argument error, got %q", err)
+		}
+	})
+
+	t.Run("DownloadFileFromGitHub rejects hyphen path", func(t *testing.T) {
+		_, err := DownloadFileFromGitHub("owner", "repo", "--upload-pack=pwn", "main")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid git argument") {
+			t.Fatalf("expected invalid git argument error, got %q", err)
+		}
+	})
+
+	t.Run("ListWorkflowFiles rejects hyphen ref", func(t *testing.T) {
+		_, err := ListWorkflowFiles("owner", "repo", "--upload-pack=pwn", ".github/workflows")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid git argument") {
+			t.Fatalf("expected invalid git argument error, got %q", err)
+		}
+	})
+
+	t.Run("ListDirAllFilesForHost rejects hyphen dirPath", func(t *testing.T) {
+		_, err := ListDirAllFilesForHost("owner", "repo", "main", "--upload-pack=pwn", "")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid git argument") {
+			t.Fatalf("expected invalid git argument error, got %q", err)
+		}
+	})
+}
