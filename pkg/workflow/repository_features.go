@@ -130,12 +130,15 @@ func (c *Compiler) validateRepositoryFeatures(workflowData *WorkflowData) error 
 				fmt.Fprintln(os.Stderr, console.FormatWarningMessage(
 					fmt.Sprintf("Could not verify if issues are enabled: %v", err)))
 			}
-			// Continue to return aggregated errors even if this check fails
+			// Continue checking other features even if this check fails
 		} else if !hasIssues {
-			issueErr := fmt.Errorf("workflow uses safe-outputs.create-issue but repository %s does not have issues enabled. Enable issues in repository settings or remove create-issue from safe-outputs", repo)
-			if returnErr := collector.Add(issueErr); returnErr != nil {
-				return returnErr // Fail-fast mode
+			// Changed to warning instead of error per issue feedback to avoid blocking E2E recompile on forks where issues are disabled
+			warningMsg := fmt.Sprintf("Repository %s may not have issues enabled. The workflow will attempt to create issues at runtime. If creation fails, enable issues in repository settings.", repo)
+			repositoryFeaturesLog.Printf("Warning: %s", warningMsg)
+			if c.verbose {
+				fmt.Fprintln(os.Stderr, console.FormatWarningMessage(warningMsg))
 			}
+			// Don't add to error collector - this is a warning, not an error
 		}
 	}
 
@@ -165,7 +168,7 @@ func getCurrentRepositoryUncached() (string, error) {
 	// This works when in a git repository with GitHub remote and respects GH_REPO
 	repo, err := repository.Current()
 	if err != nil {
-		return "", fmt.Errorf("failed to get current repository: %w", err)
+		return "", fmt.Errorf("retrieve current repository: %w; should check that git remote configuration is valid", err)
 	}
 
 	// Validate that owner and name are not empty
@@ -199,14 +202,14 @@ func getRepositoryFeatures(repo string, verbose bool) (*RepositoryFeatures, erro
 	// Check discussions
 	hasDiscussions, err := checkRepositoryHasDiscussionsUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check discussions: %w", err)
+		return nil, fmt.Errorf("verify discussions enablement: %w; should check network connection and ensure repository settings are valid", err)
 	}
 	features.HasDiscussions = hasDiscussions
 
 	// Check issues
 	hasIssues, err := checkRepositoryHasIssuesUncached(repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check issues: %w", err)
+		return nil, fmt.Errorf("verify issues enablement: %w; should check network connection and ensure repository settings are valid", err)
 	}
 	features.HasIssues = hasIssues
 
@@ -279,12 +282,12 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 	stdOut, _, err := gh.Exec("api", "graphql", "-f", "query="+query,
 		"-f", "owner="+owner, "-f", "name="+name)
 	if err != nil {
-		return false, fmt.Errorf("failed to query discussions status: %w", err)
+		return false, fmt.Errorf("query discussions status via GraphQL: %w; should verify that API credentials and permissions are valid", err)
 	}
 
 	var response GraphQLResponse
 	if err := json.Unmarshal(stdOut.Bytes(), &response); err != nil {
-		return false, fmt.Errorf("failed to parse GraphQL response: %w", err)
+		return false, fmt.Errorf("parse GraphQL response JSON: %w; should verify that API response format is valid", err)
 	}
 
 	return response.Data.Repository.HasDiscussionsEnabled, nil
@@ -310,14 +313,14 @@ func checkRepositoryHasIssuesUncached(repo string) (bool, error) {
 	// Create REST client
 	client, err := api.DefaultRESTClient()
 	if err != nil {
-		return false, fmt.Errorf("failed to create REST client: %w", err)
+		return false, fmt.Errorf("create REST client: %w; should check network configuration and ensure GitHub CLI auth token is valid", err)
 	}
 
 	// Fetch repository data using REST client
 	var response RepositoryResponse
 	err = client.Get("repos/"+repo, &response)
 	if err != nil {
-		return false, fmt.Errorf("failed to query repository: %w", err)
+		return false, fmt.Errorf("query repository via REST API: %w; should verify that API credentials and permissions are valid", err)
 	}
 
 	return response.HasIssues, nil
