@@ -32,16 +32,38 @@ func Truncate(s string, maxLen int) string {
 // NormalizeWhitespace normalizes trailing whitespace and newlines to reduce spurious conflicts.
 // It trims trailing whitespace from each line and ensures exactly one trailing newline.
 func NormalizeWhitespace(content string) string {
-	// Split into lines and trim trailing whitespace from each line
-	lines := strings.Split(content, "\n")
-	for i, line := range lines {
-		lines[i] = strings.TrimRight(line, " \t")
+	if content == "" {
+		return ""
 	}
 
-	// Join back and ensure exactly one trailing newline if content is not empty
-	normalized := strings.Join(lines, "\n")
+	// Pre-allocate strings.Builder with a reasonable capacity to minimize reallocations.
+	var builder strings.Builder
+	builder.Grow(len(content) + 1)
+
+	remaining := content
+	for {
+		idx := strings.IndexByte(remaining, '\n')
+		if idx < 0 {
+			// Trim trailing spaces and tabs from the last line (no trailing newline)
+			trimmed := strings.TrimRight(remaining, " \t")
+			if trimmed != "" {
+				builder.WriteString(trimmed)
+			}
+			break
+		}
+
+		line := remaining[:idx]
+		trimmed := strings.TrimRight(line, " \t")
+		builder.WriteString(trimmed)
+		builder.WriteByte('\n')
+
+		remaining = remaining[idx+1:]
+	}
+
+	normalized := builder.String()
+	// Strip trailing newlines from the final constructed string
 	normalized = strings.TrimRight(normalized, "\n")
-	if len(normalized) > 0 {
+	if normalized != "" {
 		normalized += "\n"
 	}
 
