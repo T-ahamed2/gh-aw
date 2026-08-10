@@ -92,7 +92,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/goccy/go-yaml"
@@ -103,9 +102,6 @@ var yamlLog = logger.New("workflow:yaml")
 // yamlNullPattern matches `: null` at the end of a line (pre-compiled for performance)
 var yamlNullPattern = regexp.MustCompile(`:\s*null\s*$`)
 
-// unquoteYAMLKeyCache caches compiled regexes for UnquoteYAMLKey by key name
-var unquoteYAMLKeyCache sync.Map
-
 // readWorkflowYAML reads and parses a trusted workflow YAML file path.
 // The caller is responsible for repository-boundary validation (for example via
 // findWorkflowFile/isPathWithinDir) before passing workflowPath.
@@ -114,19 +110,19 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 	cleanPath := filepath.Clean(workflowPath)
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve workflow path %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("yaml: failed to resolve workflow path %s: %w; should check that path is valid", workflowPath, err)
 	}
 
 	content, err := os.ReadFile(absPath) // #nosec G304 -- Caller provides trusted path, and path is normalized/absolute-resolved above
 	if err != nil {
 		yamlLog.Printf("Failed to read workflow file %s: %v", workflowPath, err)
-		return nil, fmt.Errorf("failed to read workflow file %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("yaml: failed to read workflow file %s: %w; should verify that the file exists and is readable", workflowPath, err)
 	}
 
 	var workflow map[string]any
 	if err := yaml.Unmarshal(content, &workflow); err != nil {
 		yamlLog.Printf("Failed to parse workflow file %s: %v", workflowPath, err)
-		return nil, fmt.Errorf("failed to parse workflow file %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("yaml: failed to parse workflow file %s: %w; should verify that the file contains valid YAML", workflowPath, err)
 	}
 
 	yamlLog.Printf("Read workflow YAML: %s (%d bytes, %d top-level keys)", workflowPath, len(content), len(workflow))
