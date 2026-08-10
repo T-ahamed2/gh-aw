@@ -264,7 +264,7 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if stripped, ok := strings.CutPrefix(filepath.ToSlash(filePath), "/"); ok {
 		if !strings.HasPrefix(stripped, constants.GithubDir) && !strings.HasPrefix(stripped, ".agents/") {
 			remoteLog.Printf("Security: Path not within .github or .agents: %s", filePath)
-			return "", fmt.Errorf("security: path %s must be within .github or .agents folder", filePath)
+			return "", fmt.Errorf("security: path %s should be within .github or .agents folder", filePath)
 		}
 	}
 	fullPath := filepath.Join(resolveBase, filePath)
@@ -362,7 +362,7 @@ func downloadIncludeFromWorkflowSpec(spec string, cache *ImportCache) (string, e
 	remoteLog.Printf("Fetching file from GitHub: %s/%s/%s@%s", owner, repo, filePath, ref)
 	content, err := downloadFileFromGitHub(owner, repo, filePath, ref)
 	if err != nil {
-		return "", fmt.Errorf("failed to download include from %s: %w", spec, err)
+		return "", fmt.Errorf("download include from %s: %w; should check connection and repository name", spec, err)
 	}
 	remoteLog.Printf("Successfully downloaded file: size=%d bytes", len(content))
 
@@ -394,7 +394,7 @@ func parseWorkflowSpecParts(spec string) (string, string, string, string, error)
 	slashParts := strings.Split(pathPart, "/")
 	if len(slashParts) < 3 {
 		remoteLog.Printf("Invalid workflowspec format: %s", spec)
-		return "", "", "", "", errors.New("invalid workflowspec: must be owner/repo/path[@ref]")
+		return "", "", "", "", errors.New("workflowspec should match owner/repo/path[@ref] format")
 	}
 	return slashParts[0], slashParts[1], strings.Join(slashParts[2:], "/"), ref, nil
 }
@@ -414,7 +414,7 @@ func resolveWorkflowSpecSHAForCache(owner, repo, ref string, cache *ImportCache)
 func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 	tempFile, err := os.CreateTemp("", "gh-aw-include-*.md")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %w", err)
+		return "", fmt.Errorf("create temp file: %w; should check temporary directory permissions", err)
 	}
 	cleanupOnError := true
 	fileClosed := false
@@ -435,11 +435,11 @@ func writeDownloadedIncludeToTempFile(content []byte) (string, error) {
 			remoteLog.Printf("Warning: failed to close temp file during cleanup: %v", closeErr)
 		}
 		fileClosed = true
-		return "", fmt.Errorf("failed to write temp file: %w", err)
+		return "", fmt.Errorf("write temp file: %w; should check disk space and permissions", err)
 	}
 	if err := tempFile.Close(); err != nil {
 		fileClosed = true
-		return "", fmt.Errorf("failed to close temp file: %w", err)
+		return "", fmt.Errorf("close temp file: %w; should check file descriptor limits", err)
 	}
 	cleanupOnError = false
 	fileClosed = true
