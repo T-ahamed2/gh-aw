@@ -73,7 +73,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 
 	tmpDir, err := os.MkdirTemp("", "gh-aw-list-*")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp directory: %w", err)
+		return "", fmt.Errorf("create temp directory: %w; should check directory permissions", err)
 	}
 
 	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", ref, "--single-branch", "--filter=blob:none", "--no-checkout", repoURL, tmpDir)
@@ -83,7 +83,7 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 			remoteLog.Printf("Failed to clean up temp directory %q: %v", tmpDir, cleanupErr)
 		}
 		remoteLog.Printf("Failed to clone repository: %s", string(cloneOutput))
-		return "", fmt.Errorf("failed to clone repository for %s/%s@%s: %w", owner, repo, ref, err)
+		return "", fmt.Errorf("clone repository for %s/%s@%s: %w; should check repository reference and URL", owner, repo, ref, err)
 	}
 
 	existingDir, found := func() (string, bool) {
@@ -274,7 +274,7 @@ func resolveAndValidateLocalIncludePath(filePath, resolveBase, securityBase stri
 	if err != nil || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) || filepath.IsAbs(relativePath) {
 		allowedFolder := filepath.Base(normalizedSecurityBase)
 		remoteLog.Printf("Security: Path escapes allowed folder: %s (resolves to: %s)", filePath, relativePath)
-		return "", fmt.Errorf("security: path %s must be within %s folder (resolves to: %s)", filePath, allowedFolder, relativePath)
+		return "", fmt.Errorf("security: path %s should be within %s folder (resolves to: %s)", filePath, allowedFolder, relativePath)
 	}
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
