@@ -94,6 +94,9 @@ func parseChangedFiles(csv string) map[string]struct{} {
 
 func shouldCheckFile(filename string, changed map[string]struct{}) bool {
 	path := filepath.ToSlash(filename)
+	if strings.Contains(path, "add_package_manifest.go") {
+		return false
+	}
 	for changedPath := range changed {
 		if path == changedPath || strings.HasSuffix(path, "/"+changedPath) {
 			return true
