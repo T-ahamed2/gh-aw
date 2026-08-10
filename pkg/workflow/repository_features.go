@@ -287,7 +287,7 @@ func checkRepositoryHasDiscussionsUncached(repo string) (bool, error) {
 
 	var response GraphQLResponse
 	if err := json.Unmarshal(stdOut.Bytes(), &response); err != nil {
-		return false, fmt.Errorf("failed to parse GraphQL response: %w", err)
+		return false, fmt.Errorf("parse GraphQL response: %w; should check API schema conforms to expected structure", err)
 	}
 
 	return response.Data.Repository.HasDiscussionsEnabled, nil
