@@ -46,6 +46,9 @@ func getOrCreateListRepoClone(owner, repo, ref, host string) (string, error) {
 	if ref == "" {
 		return "", errors.New("git fallback requires a non-empty ref")
 	}
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
 
 	githubHost := GetGitHubHostForRepo(owner, repo)
 	if host != "" {
@@ -500,6 +503,10 @@ func resolveRefToSHAViaGit(owner, repo, ref, host string) (string, error) {
 
 // resolveRefToSHA resolves a git ref (branch, tag, or SHA) to its commit SHA
 func resolveRefToSHA(owner, repo, ref, host string) (string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return "", err
+	}
+
 	// If ref is already a full SHA (40 hex characters), return it as-is
 	if len(ref) == 40 && gitutil.IsHexString(ref) {
 		return ref, nil
@@ -894,6 +901,13 @@ func downloadFileFromGitHub(owner, repo, path, ref string) ([]byte, error) {
 }
 
 func downloadFileFromGitHubWithDepth(owner, repo, path, ref string, symlinkDepth int, host string) ([]byte, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(path); err != nil {
+		return nil, err
+	}
+
 	client, err := createRESTClientForHost(host)
 	if err != nil {
 		if gitutil.IsAuthError(err.Error()) {
@@ -1033,6 +1047,13 @@ func ListWorkflowFilesForHost(owner, repo, ref, workflowPath, host string) ([]st
 }
 
 func listWorkflowFilesForHost(owner, repo, ref, workflowPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(workflowPath); err != nil {
+		return nil, err
+	}
+
 	remoteLog.Printf("Listing workflow files for %s/%s@%s (path: %s)", owner, repo, ref, workflowPath)
 
 	client, err := createRESTClientForHost(host)
@@ -1092,6 +1113,13 @@ func ListDirAllFilesForHost(owner, repo, ref, dirPath, host string) ([]string, e
 }
 
 func listDirAllFilesForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
 	remoteLog.Printf("Listing all files in dir for %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
 	client, err := createRESTClientForHost(host)
@@ -1205,6 +1233,13 @@ func ListDirAllFilesRecursivelyForHost(owner, repo, ref, dirPath, host string) (
 }
 
 func listDirAllFilesRecursivelyForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
 	remoteLog.Printf("Listing all files recursively in dir for %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
 	client, err := createRESTClientForHost(host)
@@ -1351,6 +1386,13 @@ func ListDirSubdirsForHost(owner, repo, ref, dirPath, host string) ([]string, er
 }
 
 func listDirSubdirsForHost(owner, repo, ref, dirPath, host string) ([]string, error) {
+	if err := gitutil.ValidateGitArg(ref); err != nil {
+		return nil, err
+	}
+	if err := gitutil.ValidateGitArg(dirPath); err != nil {
+		return nil, err
+	}
+
 	remoteLog.Printf("Listing subdirs in %s/%s@%s (path: %s)", owner, repo, ref, dirPath)
 
 	client, err := createRESTClientForHost(host)

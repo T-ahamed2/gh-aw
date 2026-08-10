@@ -60,6 +60,15 @@ func IsHexString(s string) bool {
 	return true
 }
 
+// ValidateGitArg checks if an argument passed to a Git command (like a ref or a path)
+// starts with a hyphen to prevent flag injection vulnerabilities.
+func ValidateGitArg(arg string) error {
+	if strings.HasPrefix(arg, "-") {
+		return fmt.Errorf("git argument %q should not start with a hyphen to ensure a valid ref or path name", arg)
+	}
+	return nil
+}
+
 // IsValidFullSHA checks if s is a valid 40-character lowercase hexadecimal SHA.
 func IsValidFullSHA(s string) bool {
 	return fullSHARegex.MatchString(s)
@@ -170,6 +179,10 @@ func ReadFileFromHEAD(filePath, gitRoot string) (string, error) {
 	}
 
 	relPath = filepath.ToSlash(relPath)
+
+	if err := ValidateGitArg(relPath); err != nil {
+		return "", err
+	}
 
 	gitutilLog.Printf("Reading %q from git HEAD (relative path: %s)", filePath, relPath)
 
