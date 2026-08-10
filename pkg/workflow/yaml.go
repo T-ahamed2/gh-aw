@@ -161,29 +161,51 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 //	result := UnquoteYAMLKey(input, "on")
 //	// result: "on:\n  push:\n    branches:\n      - main"
 func UnquoteYAMLKey(yamlStr string, key string) string {
-	yamlLog.Printf("Unquoting YAML key: %s", key)
-
-	// Create a regex pattern that matches the quoted key at the start of a line
-	// Pattern: (start of line or newline) + (optional whitespace) + quoted key + colon
-	pattern := `(^|\n)([ \t]*)"` + regexp.QuoteMeta(key) + `":`
-
-	// Use cached compiled regex to avoid recompiling on every call
-	var re *regexp.Regexp
-	if cached, ok := unquoteYAMLKeyCache.Load(key); ok {
-		var typeOK bool
-		re, typeOK = cached.(*regexp.Regexp)
-		if !typeOK {
-			unquoteYAMLKeyCache.Delete(key)
-			re = regexp.MustCompile(pattern)
-			unquoteYAMLKeyCache.Store(key, re)
-		}
-	} else {
-		re = regexp.MustCompile(pattern)
-		unquoteYAMLKeyCache.Store(key, re)
+	if yamlLog.Enabled() {
+		yamlLog.Printf("Unquoting YAML key: %s", key)
 	}
-	// Use ReplaceAllString with capture group references for a single-pass replacement.
-	// ${1} = line start (^ or \n), ${2} = optional whitespace
-	return re.ReplaceAllString(yamlStr, "${1}${2}"+key+":")
+
+	quotedTarget := `"` + key + `":`
+	if !strings.Contains(yamlStr, quotedTarget) {
+		return yamlStr
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(yamlStr))
+
+	pos := 0
+	for {
+		idx := strings.Index(yamlStr[pos:], quotedTarget)
+		if idx == -1 {
+			sb.WriteString(yamlStr[pos:])
+			break
+		}
+
+		absIdx := pos + idx
+
+		isStartOfLine := true
+		for i := absIdx - 1; i >= 0; i-- {
+			char := yamlStr[i]
+			if char == '\n' {
+				break
+			}
+			if char != ' ' && char != '\t' {
+				isStartOfLine = false
+				break
+			}
+		}
+
+		if isStartOfLine {
+			sb.WriteString(yamlStr[pos:absIdx])
+			sb.WriteString(key)
+			sb.WriteByte(':')
+		} else {
+			sb.WriteString(yamlStr[pos : absIdx+len(quotedTarget)])
+		}
+		pos = absIdx + len(quotedTarget)
+	}
+
+	return sb.String()
 }
 
 // UnquoteYAMLTopLevelKey removes quotes from a YAML key only when it appears
