@@ -100,9 +100,6 @@ import (
 
 var yamlLog = logger.New("workflow:yaml")
 
-// yamlNullPattern matches `: null` at the end of a line (pre-compiled for performance)
-var yamlNullPattern = regexp.MustCompile(`:\s*null\s*$`)
-
 // unquoteYAMLKeyCache caches compiled regexes for UnquoteYAMLKey by key name
 var unquoteYAMLKeyCache sync.Map
 
@@ -114,19 +111,19 @@ func readWorkflowYAML(workflowPath string) (map[string]any, error) {
 	cleanPath := filepath.Clean(workflowPath)
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve workflow path %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("failed to resolve workflow path %s: %w; should check if path is valid and exists", workflowPath, err)
 	}
 
 	content, err := os.ReadFile(absPath) // #nosec G304 -- Caller provides trusted path, and path is normalized/absolute-resolved above
 	if err != nil {
 		yamlLog.Printf("Failed to read workflow file %s: %v", workflowPath, err)
-		return nil, fmt.Errorf("failed to read workflow file %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("failed to read workflow file %s: %w; should check if file has valid permissions", workflowPath, err)
 	}
 
 	var workflow map[string]any
 	if err := yaml.Unmarshal(content, &workflow); err != nil {
 		yamlLog.Printf("Failed to parse workflow file %s: %v", workflowPath, err)
-		return nil, fmt.Errorf("failed to parse workflow file %s: %w", workflowPath, err)
+		return nil, fmt.Errorf("failed to parse workflow file %s: %w; expected valid YAML content", workflowPath, err)
 	}
 
 	yamlLog.Printf("Read workflow YAML: %s (%d bytes, %d top-level keys)", workflowPath, len(content), len(workflow))
@@ -437,13 +434,44 @@ func recursivelyOrderYAMLValue(value any) any {
 func CleanYAMLNullValues(yamlStr string) string {
 	yamlLog.Print("Cleaning null values from YAML")
 
-	// Split into lines, process each line, and rejoin
-	lines := strings.Split(yamlStr, "\n")
-	for i, line := range lines {
-		lines[i] = yamlNullPattern.ReplaceAllString(line, ":")
+	if yamlStr == "" || !strings.Contains(yamlStr, "null") {
+		return yamlStr
 	}
 
-	return strings.Join(lines, "\n")
+	// Pre-grow builder to the size of the input string to avoid reallocations.
+	var builder strings.Builder
+	builder.Grow(len(yamlStr))
+
+	start := 0
+	for {
+		idx := strings.IndexByte(yamlStr[start:], '\n')
+		var line string
+		if idx == -1 {
+			line = yamlStr[start:]
+		} else {
+			line = yamlStr[start : start+idx]
+		}
+
+		// Process the line: remove trailing ": null" (with optional spaces/tabs/carriage returns)
+		trimmedRight := strings.TrimRight(line, " \t\r")
+		if strings.HasSuffix(trimmedRight, "null") {
+			beforeNull := trimmedRight[:len(trimmedRight)-4]
+			beforeNullTrimmed := strings.TrimRight(beforeNull, " \t")
+			if strings.HasSuffix(beforeNullTrimmed, ":") {
+				line = beforeNullTrimmed
+			}
+		}
+
+		builder.WriteString(line)
+
+		if idx == -1 {
+			break
+		}
+		builder.WriteByte('\n')
+		start += idx + 1
+	}
+
+	return builder.String()
 }
 
 // formatYAMLValue formats a value for YAML output, quoting strings and rendering

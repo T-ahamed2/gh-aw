@@ -507,6 +507,39 @@ func TestExtractTopLevelYAMLSectionWithOrdering(t *testing.T) {
 	}
 }
 
+// BenchmarkCleanYAMLNullValues measures performance of cleaning null values in YAML.
+func BenchmarkCleanYAMLNullValues(b *testing.B) {
+	yamlStr := `on:
+  schedule:
+  - cron: "0 0 * * *"
+  workflow_dispatch: null
+  workflow_call: null
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]`
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = CleanYAMLNullValues(yamlStr)
+	}
+}
+
+// BenchmarkCleanYAMLNullValues_NoNull measures performance when no null exists.
+func BenchmarkCleanYAMLNullValues_NoNull(b *testing.B) {
+	yamlStr := `on:
+  schedule:
+  - cron: "0 0 * * *"
+  workflow_dispatch:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]`
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = CleanYAMLNullValues(yamlStr)
+	}
+}
+
 // BenchmarkUnquoteYAMLKey measures single-pass regex replacement performance.
 // This benchmark guards against regressions where the implementation calls
 // FindStringSubmatch inside a ReplaceAllStringFunc callback (double regex pass).
